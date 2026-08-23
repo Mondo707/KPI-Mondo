@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kassa kiritish — KPI Bonus</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container" style="max-width:480px;">
+    <div class="section">
+      <h2>Bugungi umumiy kassani kiriting</h2>
+      <label for="spot_id">Filial</label>
+      <select id="spot_id"></select>
+
+      <label for="date">Sana</label>
+      <input type="date" id="date">
+
+      <label for="amount">Umumiy kassa summasi (so'm)</label>
+      <input type="number" id="amount" placeholder="Masalan: 3100000">
+
+      <button class="btn-primary" id="submit-btn">Yuborish</button>
+
+      <div id="result" style="margin-top:20px;"></div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/topbar.js"></script>
+  <script>
+    requireAuth();
+    renderTopbar('cash');
+
+    async function loadSpots() {
+      try {
+        const data = await apiFetch('/spots');
+        const select = document.getElementById('spot_id');
+        data.spots.forEach((s) => {
+          const opt = document.createElement('option');
+          opt.value = s.spot_id;
+          opt.textContent = s.name;
+          select.appendChild(opt);
+        });
+      } catch (e) {
+        showToast('Filiallarni yuklab bo\'lmadi: ' + e.message, true);
+      }
+    }
+
+    document.getElementById('date').value = todayStr();
+
+    document.getElementById('submit-btn').addEventListener('click', async () => {
+      const spot_id = Number(document.getElementById('spot_id').value);
+      const date = document.getElementById('date').value;
+      const entered_amount = Number(document.getElementById('amount').value);
+      const resultEl = document.getElementById('result');
+
+      if (!spot_id || !date || !entered_amount) {
+        showToast('Barcha maydonlarni to\'ldiring', true);
+        return;
+      }
+
+      resultEl.innerHTML = 'Tekshirilmoqda...';
+      try {
+        const data = await apiFetch('/cash/entry', {
+          method: 'POST',
+          body: JSON.stringify({ date, spot_id, entered_amount }),
+        });
+        resultEl.innerHTML = `
+          <div class="summary-card ${data.ok ? 'total' : ''}">
+            <div class="label">Poster hisobotidagi summa</div>
+            <div class="value">${formatMoney(data.poster_total)}</div>
+          </div>
+          <p style="margin-top:12px; color:${data.ok ? 'var(--accent)' : 'var(--danger)'};">
+            ${data.message} (farq: ${data.diff_percent}%)
+          </p>
+        `;
+        showToast(data.ok ? 'Kassa tasdiqlandi' : 'Farq katta - bonus bekor qilindi', !data.ok);
+      } catch (e) {
+        resultEl.innerHTML = '';
+        showToast('Xato: ' + e.message, true);
+      }
+    });
+
+    loadSpots();
+  </script>
+</body>
+</html>

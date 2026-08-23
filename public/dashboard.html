@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ko'rish — KPI Bonus</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="filters">
+      <div class="field">
+        <label for="date_from">Sanadan</label>
+        <input type="date" id="date_from">
+      </div>
+      <div class="field">
+        <label for="date_to">Sanagacha</label>
+        <input type="date" id="date_to">
+      </div>
+      <div class="field">
+        <label for="spot_id">Filial</label>
+        <select id="spot_id">
+          <option value="">Barchasi</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="category">Mahsulot kategoriyasi</label>
+        <select id="category">
+          <option value="">Barchasi</option>
+        </select>
+      </div>
+      <button class="btn-primary apply-btn" id="apply-btn" style="max-width:140px;">Qo'llash</button>
+    </div>
+
+    <div class="receipt-wrap" id="receipt-wrap" style="display:none;">
+      <div class="receipt">
+        <div class="r-title" id="receipt-spot-name"></div>
+        <div class="r-sub">BONUS HISOB-KITOBI</div>
+        <div class="r-date" id="receipt-date"></div>
+        <hr class="r-divider">
+        <div id="receipt-lines"></div>
+        <hr class="r-divider">
+        <div class="r-total"><span class="l">Jami bonus</span><span class="v" id="receipt-total">0</span></div>
+        <div class="r-status" id="receipt-status"></div>
+      </div>
+    </div>
+
+    <div class="section journal-section" id="journal-section" style="display:none;">
+      <div class="journal-head">
+        <h2>Kunlik bonus jurnali — <span id="journal-spot-name"></span></h2>
+        <div class="month-total">Tanlangan davr: <b id="journal-total">0 so'm</b></div>
+      </div>
+      <p class="journal-sub">Har bir kun uchun jami bonus (barcha kategoriyalar yig'indisi) va kassa holati.</p>
+      <table>
+        <thead>
+          <tr><th>Sana</th><th>Jami bonus</th><th>Holat</th></tr>
+        </thead>
+        <tbody id="journal-body"></tbody>
+      </table>
+      <div class="empty-state" id="journal-empty" style="display:none;">Bu davr uchun yozuv yo'q</div>
+    </div>
+
+    <div class="progress-section" id="progress-section" style="display:none;">
+      <p class="section-label" style="color:var(--text-dim); font-size:13px; margin-bottom:10px;">
+        Kategoriyalar bo'yicha progress — <span id="progress-spot-name"></span>, <span id="progress-date"></span>
+      </p>
+      <div class="progress-grid" id="progress-grid"></div>
+    </div>
+
+    <div class="summary-cards">
+      <div class="summary-card">
+        <div class="label">Yozuvlar soni</div>
+        <div class="value" id="rows-count">0</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/topbar.js"></script>
+  <script>
+    requireAuth();
+    renderTopbar('dashboard');
+
+    let spotsById = {};
+    let tiersConfig = {};
+
+    function setDefaultDates() {
+      const today = todayStr();
+      document.getElementById('date_from').value = today;
+      document.getElementById('date_to').value = today;
+    }
+
+    async function loadTiersConfig() {
+      try {
+        const data = await apiFetch('/bonus/tiers');
+        tiersConfig = data.categories;
+      } catch (e) {
+        showToast('Pog\'ona jadvalini yuklab bo\'lmadi: ' + e.message, true);
+      }
+    }
+
+    async function loadSpots() {
+      try {
+        const data = await apiFetch('/spots');
+        const select = document.getElementById('spot_id');
+        data.spots.forEach((s) => {
+          spotsById[s.spot_id] = s.name;
+          const opt = document.createElement('option');
+          opt.value = s.spot_id;
+          opt.textContent = s.name;
+          select.appendChild(opt);
+        });
+      } catch (e) {
+        showToast('Filiallarni yuklab bo\'lmadi: ' + e.message, true);
+      }
+    }
+
+    function populateCategories() {
+      const select = document.getElementById('category');
+      const categories = [
+        'Лимонады','Милкшейк','Фреш','Фрозен','Манго сок','Вафли','Десерты',
+        'Сан-себастьян','Фасовка','Чай','Кофе 250 мл','Кофе 350 мл','Чашка кофе',
+        'Айс кофе','Смесь','Шарик'
+      ];
+      categories.forEach((c) => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        select.appendChild(opt);
+      });
+    }
+
+    async function loadBonusData() {
+      const date_from = document.getElementById('date_from').value;
+      const date_to = document.getElementById('date_to').value;
+      const spot_id = document.getElementById('spot_id').value;
+      const category = document.getElementById('category').value;
+
+      const params = new URLSearchParams({ date_from, date_to });
+      if (spot_id) params.set('spot_id', spot_id);
+      if (category) params.set('category', category);
+
+      try {
+        const data = await apiFetch('/bonus?' + params.toString());
+        document.getElementById('rows-count').textContent = data.count;
+        renderProgress(data.rows, date_from, date_to, spot_id);
+        renderReceipt(data.rows, date_from, date_to, spot_id);
+        await loadJournal(spot_id, date_from, date_to);
+      } catch (e) {
+        showToast('Ma\'lumot yuklashda xato: ' + e.message, true);
+      }
+    }
+
+    // Kunlik bonus jurnali — faqat bitta filial tanlanganda ko'rsatiladi
+    async function loadJournal(spot_id, date_from, date_to) {
+      const section = document.getElementById('journal-section');
+      if (!spot_id) {
+        section.style.display = 'none';
+        return;
+      }
+
+      try {
+        const params = new URLSearchParams({ spot_id, date_from, date_to });
+        const data = await apiFetch('/bonus/journal?' + params.toString());
+
+        section.style.display = 'block';
+        document.getElementById('journal-spot-name').textContent = spotsById[spot_id] || ('#' + spot_id);
+        document.getElementById('journal-total').textContent = formatMoney(data.total);
+
+        const tbody = document.getElementById('journal-body');
+        const emptyEl = document.getElementById('journal-empty');
+        tbody.innerHTML = '';
+
+        if (!data.entries.length) {
+          emptyEl.style.display = 'block';
+          return;
+        }
+        emptyEl.style.display = 'none';
+
+        data.entries.forEach((e) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${e.date}</td>
+            <td>${formatMoney(e.bonus)}</td>
+            <td>${e.ok
+              ? '<span class="badge ok">To\'landi</span>'
+              : '<span class="badge bad">To\'lanmadi (kassa farqi)</span>'}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        showToast('Jurnalni yuklashda xato: ' + e.message, true);
+      }
+    }
+
+    // Faqat "bitta filial + bitta sana" tanlanganda progress-kartalarni ko'rsatadi,
+    // chunki pog'ona holati aynan shu kombinatsiya uchun ma'noli.
+    function renderProgress(rows, date_from, date_to, spot_id) {
+      const section = document.getElementById('progress-section');
+      const grid = document.getElementById('progress-grid');
+
+      if (date_from !== date_to || !spot_id) {
+        section.style.display = 'none';
+        return;
+      }
+
+      section.style.display = 'block';
+      document.getElementById('progress-spot-name').textContent = spotsById[spot_id] || ('#' + spot_id);
+      document.getElementById('progress-date').textContent = date_from;
+
+      const byCategory = new Map(rows.map((r) => [r.category, r]));
+      grid.innerHTML = '';
+
+      Object.entries(tiersConfig).forEach(([category, cfg]) => {
+        const row = byCategory.get(category);
+        const qty = row ? row.quantity : 0;
+
+        let idx = -1;
+        cfg.tiers.forEach((t, i) => { if (qty >= t.min) idx = i; });
+        const currentBonus = idx >= 0 ? cfg.tiers[idx].bonus : 0;
+        const nextTier = idx < cfg.tiers.length - 1 ? cfg.tiers[idx + 1] : null;
+
+        const segs = cfg.tiers.map((t, i) => {
+          let cls = 'tier-seg';
+          if (i < idx) cls += ' reached';
+          if (i === idx) cls += ' current';
+          return `<div class="${cls}"></div>`;
+        }).join('');
+
+        let hint;
+        if (nextTier) {
+          const remaining = Math.max(0, nextTier.min - qty);
+          hint = remaining > 0
+            ? `Keyingi pog'onagacha <b>${Math.round(remaining * 100) / 100} ${cfg.unit}</b> qoldi`
+            : `Keyingi pog'onaga yetdi!`;
+        } else if (idx === cfg.tiers.length - 1) {
+          hint = `<b>Maksimal pog'ona</b> — eng yuqori stavka.`;
+        } else {
+          hint = `Bonus uchun kamida <b>${cfg.tiers[0].min} ${cfg.unit}</b> kerak.`;
+        }
+
+        const card = document.createElement('div');
+        card.className = 'progress-card';
+        card.innerHTML = `
+          <div class="p-top">
+            <span class="p-name">${category}</span>
+            <span class="p-qty">${Math.round(qty * 100) / 100} ${cfg.unit}</span>
+          </div>
+          <div class="tier-track">${segs}</div>
+          <div class="tier-meta">
+            <span class="tier-level-badge ${idx === -1 ? 'none' : ''}">${idx === -1 ? "Pog'ona yo'q" : (idx + 1) + '-daraja'}</span>
+          </div>
+          <div class="p-bonus">${formatMoney(row && row.cash_diff_ok !== 0 ? currentBonus : 0)}</div>
+          <div class="p-hint">${hint}</div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function renderReceipt(rows, date_from, date_to, spot_id) {
+      const wrap = document.getElementById('receipt-wrap');
+      if (date_from !== date_to || !spot_id) {
+        wrap.style.display = 'none';
+        return;
+      }
+      wrap.style.display = 'flex';
+
+      document.getElementById('receipt-spot-name').textContent = spotsById[spot_id] || ('#' + spot_id);
+      document.getElementById('receipt-date').textContent = date_from;
+
+      const sold = rows.filter((r) => r.quantity > 0);
+      const linesEl = document.getElementById('receipt-lines');
+
+      if (!sold.length) {
+        linesEl.innerHTML = '<div class="r-empty">Bu kunda sotuv qayd etilmagan</div>';
+      } else {
+        linesEl.innerHTML = sold.map((r) => {
+          const cfg = tiersConfig[r.category];
+          const unit = cfg ? cfg.unit : 'dona';
+          const qtyDisplay = Math.round(r.quantity * 100) / 100;
+          return `<div class="r-line"><span>${r.category} &times; ${qtyDisplay} ${unit}</span><span class="v">${formatMoney(r.cash_diff_ok ? r.bonus : 0)}</span></div>`;
+        }).join('');
+      }
+
+      const total = sold.reduce((sum, r) => sum + (r.cash_diff_ok ? r.bonus : 0), 0);
+      document.getElementById('receipt-total').textContent = formatMoney(total);
+
+      const anyBad = sold.some((r) => !r.cash_diff_ok);
+      const statusEl = document.getElementById('receipt-status');
+      if (anyBad) {
+        statusEl.className = 'r-status bad';
+        statusEl.innerHTML = '<b>Bonus to\'lanmaydi</b>Kassa farqi belgilangan me\'yordan (0.3%) oshgan.';
+      } else {
+        statusEl.className = 'r-status ok';
+        statusEl.innerHTML = '<b>Bonus to\'lanadi</b>Kassa farqi me\'yor ichida — nazorat filtri o\'tdi.';
+      }
+    }
+
+    document.getElementById('apply-btn').addEventListener('click', loadBonusData);
+
+    (async function init() {
+      setDefaultDates();
+      populateCategories();
+      await loadTiersConfig();
+      await loadSpots();
+      await loadBonusData();
+    })();
+  </script>
+</body>
+</html>

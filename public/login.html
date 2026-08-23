@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kirish — KPI Bonus</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <h1>KPI Bonus tizimiga kirish</h1>
+      <form id="login-form">
+        <label for="login">Login</label>
+        <input type="text" id="login" autocomplete="username" required>
+
+        <label for="password">Parol</label>
+        <input type="password" id="password" autocomplete="current-password" required>
+
+        <div class="error-msg" id="error-msg"></div>
+        <button type="submit" class="btn-primary" id="submit-btn">Kirish</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    if (getToken()) {
+      window.location.href = '/dashboard.html';
+    }
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const login = document.getElementById('login').value.trim();
+      const password = document.getElementById('password').value;
+      const errorEl = document.getElementById('error-msg');
+      const btn = document.getElementById('submit-btn');
+      errorEl.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Tekshirilmoqda...';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ login, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Login xato');
+
+        setSession(data.token, data.user);
+        window.location.href = data.user.role === 'admin' ? '/dashboard.html' : '/dashboard.html';
+      } catch (err) {
+        errorEl.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Kirish';
+      }
+    });
+  </script>
+</body>
+</html>

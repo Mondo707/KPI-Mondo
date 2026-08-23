@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin panel — KPI Bonus</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="section">
+      <h2>Tarixiy ma'lumotlarni yuklash (backfill)</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
+        Tizim har bir kunni Poster'dan avtomatik faqat "bugungi kun" uchun oladi. Eski sanalarni ko'rish uchun
+        birinchi marta shu yerdan sinxronlab qo'ying (bir martalik amal, keyin doim bazada saqlanadi).
+      </p>
+      <div class="form-row">
+        <div class="field">
+          <label for="sync-from">Sanadan</label>
+          <input type="date" id="sync-from">
+        </div>
+        <div class="field">
+          <label for="sync-to">Sanagacha</label>
+          <input type="date" id="sync-to">
+        </div>
+        <button class="btn-primary" id="sync-btn" style="max-width:180px;">Sinxronlash</button>
+      </div>
+      <div id="sync-result" style="margin-top:12px; font-size:13px; color:var(--text-dim);"></div>
+    </div>
+
+    <div class="section">
+      <h2>Bonus jadvalini sozlash</h2>
+      <div id="categories-wrap">Yuklanmoqda...</div>
+    </div>
+
+    <div class="section">
+      <h2>Yangi foydalanuvchi qo'shish</h2>
+      <div class="form-row">
+        <div class="field">
+          <label for="new-login">Login</label>
+          <input type="text" id="new-login">
+        </div>
+        <div class="field">
+          <label for="new-password">Parol</label>
+          <input type="text" id="new-password">
+        </div>
+        <div class="field">
+          <label for="new-role">Rol</label>
+          <select id="new-role">
+            <option value="viewer">Ko'ruvchi (viewer)</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="field" style="flex:2;">
+          <label>Ruxsat etilgan filiallar (hech biri belgilanmasa = hammasi)</label>
+          <div id="new-spots-checks" class="spot-checks"></div>
+        </div>
+        <button class="btn-primary" id="create-user-btn" style="max-width:160px;">Qo'shish</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Foydalanuvchilar ro'yxati</h2>
+      <table>
+        <thead>
+          <tr><th>Login</th><th>Rol</th><th>Filiallar</th><th>Holat</th><th>Yaratilgan</th><th>Amallar</th></tr>
+        </thead>
+        <tbody id="users-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/topbar.js"></script>
+  <script>
+    requireAdmin();
+    renderTopbar('admin');
+
+    let spotsList = [];
+    let currentUserId = null;
+
+    async function loadSpotsForForm() {
+      try {
+        const data = await apiFetch('/spots');
+        spotsList = data.spots;
+        const wrap = document.getElementById('new-spots-checks');
+        wrap.innerHTML = spotsList.map((s) => `
+          <label class="spot-check-item">
+            <input type="checkbox" value="${s.spot_id}" class="new-spot-check">
+            ${s.name}
+          </label>
+        `).join('');
+      } catch (e) {
+        showToast('Filiallarni yuklab bo\'lmadi: ' + e.message, true);
+      }
+    }
+
+    async function loadBonusConfig() {
+      const wrap = document.getElementById('categories-wrap');
+      try {
+        const data = await apiFetch('/admin/bonus-config');
+        wrap.innerHTML = '';
+        Object.entries(data.categories).forEach(([category, cfg]) => {
+          const row = document.createElement('div');
+          row.className = 'category-row';
+          row.innerHTML = `
+            <div class="cat-name">${category} <span style="color:var(--text-dim); font-weight:400;">(${cfg.unit === 'kg' ? 'kg' : 'dona'})</span></div>
+            <div class="tier-grid">
+              ${cfg.tiers.map((t, idx) => `
+                <div class="tier-cell">
+                  <div class="range">${t.min}${t.max ? '–' + t.max : '+'} ${cfg.unit === 'kg' ? 'kg' : 'dona'}</div>
+                  <input type="number" data-category="${category}" data-tier="${idx}" value="${t.bonus}">
+                </div>
+              `).join('')}
+            </div>
+          `;
+          wrap.appendChild(row);
+        });
+
+        wrap.querySelectorAll('input[type=number]').forEach((input) => {
+          input.addEventListener('change', async () => {
+            const category = input.dataset.category;
+            const tier_index = Number(input.dataset.tier);
+            const bonus = Number(input.value);
+            try {
+              await apiFetch('/admin/bonus-config', {
+                method: 'PUT',
+                body: JSON.stringify({ category, tier_index, bonus }),
+              });
+              showToast(`"${category}" yangilandi`);
+            } catch (e) {
+              showToast('Xato: ' + e.message, true);
+            }
+          });
+        });
+      } catch (e) {
+        wrap.innerHTML = '<div class="error-msg">Yuklashda xato: ' + e.message + '</div>';
+      }
+    }
+
+    async function loadUsers() {
+      const tbody = document.getElementById('users-body');
+      try {
+        const data = await apiFetch('/admin/users');
+        tbody.innerHTML = '';
+        data.users.forEach((u) => {
+          const spotsNames = u.allowed_spots.length
+            ? u.allowed_spots.map((id) => {
+                const s = spotsList.find((x) => Number(x.spot_id) === Number(id));
+                return s ? s.name : ('#' + id);
+              }).join(', ')
+            : 'Barchasi';
+
+          const tr = document.createElement('tr');
+          tr.dataset.userId = u.id;
+          tr.innerHTML = `
+            <td>${u.login}</td>
+            <td>${u.role}</td>
+            <td class="spots-cell">${spotsNames}</td>
+            <td>${u.is_active
+              ? '<span class="badge ok">Faol</span>'
+              : '<span class="badge bad">Faolsiz</span>'}</td>
+            <td>${u.created_at}</td>
+            <td>
+              <button class="action-btn" data-act="edit-spots" data-id="${u.id}">Filiallar</button>
+              <button class="action-btn warn" data-act="toggle-active" data-id="${u.id}" data-active="${u.is_active}">
+                ${u.is_active ? "Faolsizlantirish" : 'Faollashtirish'}
+              </button>
+              <button class="action-btn danger" data-act="delete" data-id="${u.id}">O'chirish</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        attachUserRowHandlers();
+      } catch (e) {
+        showToast('Foydalanuvchilarni yuklashda xato: ' + e.message, true);
+      }
+    }
+
+    function attachUserRowHandlers() {
+      document.querySelectorAll('[data-act="toggle-active"]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.id;
+          const isActive = btn.dataset.active === '1' || btn.dataset.active === 'true';
+          const confirmMsg = isActive
+            ? 'Bu foydalanuvchini faolsizlantirasizmi? U tizimga kira olmaydi.'
+            : 'Bu foydalanuvchini qayta faollashtirasizmi?';
+          if (!confirm(confirmMsg)) return;
+          try {
+            await apiFetch(`/admin/users/${id}/status`, {
+              method: 'PUT',
+              body: JSON.stringify({ is_active: !isActive }),
+            });
+            showToast(isActive ? 'Foydalanuvchi faolsizlantirildi' : 'Foydalanuvchi faollashtirildi');
+            await loadUsers();
+          } catch (e) {
+            showToast('Xato: ' + e.message, true);
+          }
+        });
+      });
+
+      document.querySelectorAll('[data-act="delete"]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.id;
+          if (!confirm('Bu foydalanuvchini butunlay o\'chirasizmi? Bu amalni orqaga qaytarib bo\'lmaydi.')) return;
+          try {
+            await apiFetch(`/admin/users/${id}`, { method: 'DELETE' });
+            showToast('Foydalanuvchi o\'chirildi');
+            await loadUsers();
+          } catch (e) {
+            showToast('Xato: ' + e.message, true);
+          }
+        });
+      });
+
+      document.querySelectorAll('[data-act="edit-spots"]').forEach((btn) => {
+        btn.addEventListener('click', () => toggleSpotsEditor(btn.dataset.id));
+      });
+    }
+
+    async function toggleSpotsEditor(userId) {
+      const row = document.querySelector(`tr[data-user-id="${userId}"]`);
+      const existing = row.nextElementSibling;
+      if (existing && existing.classList.contains('spots-edit-row')) {
+        existing.remove();
+        return;
+      }
+      // Boshqa ochiq bo'lgan tahrirlash panellarini yopib qo'yamiz
+      document.querySelectorAll('.spots-edit-row').forEach((el) => el.remove());
+
+      const data = await apiFetch('/admin/users');
+      const user = data.users.find((u) => String(u.id) === String(userId));
+      if (!user) return;
+
+      const editRow = document.createElement('tr');
+      editRow.className = 'spots-edit-row';
+      const td = document.createElement('td');
+      td.colSpan = 6;
+      td.innerHTML = `
+        <div class="spots-edit-panel">
+          <div class="spot-checks" id="edit-spots-${userId}">
+            ${spotsList.map((s) => `
+              <label class="spot-check-item">
+                <input type="checkbox" value="${s.spot_id}" class="edit-spot-check"
+                  ${user.allowed_spots.includes(Number(s.spot_id)) ? 'checked' : ''}>
+                ${s.name}
+              </label>
+            `).join('')}
+          </div>
+          <button class="btn-primary" style="max-width:140px; margin-top:10px;" id="save-spots-${userId}">Saqlash</button>
+        </div>
+      `;
+      editRow.appendChild(td);
+      row.after(editRow);
+
+      document.getElementById(`save-spots-${userId}`).addEventListener('click', async () => {
+        const checks = editRow.querySelectorAll('.edit-spot-check:checked');
+        const selected = Array.from(checks).map((c) => Number(c.value));
+        try {
+          await apiFetch(`/admin/users/${userId}/spots`, {
+            method: 'PUT',
+            body: JSON.stringify({ allowed_spots: selected }),
+          });
+          showToast('Filiallar yangilandi');
+          editRow.remove();
+          await loadUsers();
+        } catch (e) {
+          showToast('Xato: ' + e.message, true);
+        }
+      });
+    }
+
+    document.getElementById('create-user-btn').addEventListener('click', async () => {
+      const login = document.getElementById('new-login').value.trim();
+      const password = document.getElementById('new-password').value;
+      const role = document.getElementById('new-role').value;
+      const selected = Array.from(document.querySelectorAll('.new-spot-check:checked')).map((c) => Number(c.value));
+
+      if (!login || !password) {
+        showToast('Login va parol kiritilishi shart', true);
+        return;
+      }
+
+      try {
+        await apiFetch('/admin/users', {
+          method: 'POST',
+          body: JSON.stringify({ login, password, role, allowed_spots: selected }),
+        });
+        showToast('Foydalanuvchi qo\'shildi');
+        document.getElementById('new-login').value = '';
+        document.getElementById('new-password').value = '';
+        document.querySelectorAll('.new-spot-check:checked').forEach((c) => { c.checked = false; });
+        await loadUsers();
+      } catch (e) {
+        showToast('Xato: ' + e.message, true);
+      }
+    });
+
+    document.getElementById('sync-btn').addEventListener('click', async () => {
+      const date_from = document.getElementById('sync-from').value;
+      const date_to = document.getElementById('sync-to').value;
+      const resultEl = document.getElementById('sync-result');
+      const btn = document.getElementById('sync-btn');
+
+      if (!date_from || !date_to) {
+        showToast('Sana oralig\'ini tanlang', true);
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Sinxronlanmoqda...';
+      resultEl.textContent = 'Bu bir necha daqiqa vaqt olishi mumkin (har bir kun Poster\'dan alohida so\'raladi)...';
+
+      try {
+        const data = await apiFetch('/admin/sync-range', {
+          method: 'POST',
+          body: JSON.stringify({ date_from, date_to }),
+        });
+        resultEl.textContent = `Tugadi: ${data.total_days} kun ishlandi, ${data.failed_days} tasi xato bilan.`;
+        showToast(data.ok ? 'Sinxronlash muvaffaqiyatli tugadi' : 'Sinxronlash qisman muvaffaqiyatli', !data.ok);
+      } catch (e) {
+        resultEl.textContent = '';
+        showToast('Xato: ' + e.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sinxronlash';
+      }
+    });
+
+    (async function init() {
+      const today = todayStr();
+      const monthAgo = new Date();
+      monthAgo.setDate(monthAgo.getDate() - 30);
+      document.getElementById('sync-from').value = monthAgo.toISOString().slice(0, 10);
+      document.getElementById('sync-to').value = today;
+
+      await loadSpotsForForm();
+      await loadBonusConfig();
+      await loadUsers();
+    })();
+  </script>
+</body>
+</html>
