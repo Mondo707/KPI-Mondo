@@ -33,4 +33,21 @@ function adminOnly(req, res, next) {
   next();
 }
 
-module.exports = { authRequired, adminOnly, JWT_SECRET };
+/**
+ * Foydalanuvchi ma'lum bir bo'limga (masalan 'dashboard' yoki 'cash') kirish huquqiga
+ * ega bo'lishini talab qiladi. Admin har doim barcha bo'limlarga kira oladi.
+ */
+function requireSection(section) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: 'Token topilmadi' });
+    if (req.user.role === 'admin') return next();
+
+    const allowed = req.user.allowed_sections || ['dashboard', 'cash'];
+    if (!allowed.includes(section)) {
+      return res.status(403).json({ error: 'Bu bo\'limga ruxsatingiz yo\'q' });
+    }
+    next();
+  };
+}
+
+module.exports = { authRequired, adminOnly, requireSection, JWT_SECRET };
