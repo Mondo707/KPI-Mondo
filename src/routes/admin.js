@@ -30,17 +30,17 @@ router.put('/bonus-config', async (req, res) => {
 });
 
 // POST /api/admin/users - yangi foydalanuvchi (masalan filial menejeri/supervizor) yaratish
-// body: { login, password, role: 'viewer'|'admin', allowed_spots: [1,2,3] }
+// body: { login, password, role: 'viewer'|'admin', allowed_spots: [1,2,3], allowed_sections: ['dashboard','cash'] }
 router.post('/users', async (req, res) => {
-  const { login, password, role = 'viewer', allowed_spots = [] } = req.body || {};
+  const { login, password, role = 'viewer', allowed_spots = [], allowed_sections = ['dashboard', 'cash'] } = req.body || {};
   if (!login || !password) {
     return res.status(400).json({ error: 'login va password kerak' });
   }
   const hash = bcrypt.hashSync(password, 10);
   try {
     await pool.query(
-      'INSERT INTO users (login, password_hash, role, allowed_spots) VALUES ($1, $2, $3, $4)',
-      [login, hash, role, JSON.stringify(allowed_spots)]
+      'INSERT INTO users (login, password_hash, password_plain, role, allowed_spots, allowed_sections) VALUES ($1, $2, $3, $4, $5, $6)',
+      [login, hash, password, role, JSON.stringify(allowed_spots), JSON.stringify(allowed_sections)]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -52,14 +52,17 @@ router.post('/users', async (req, res) => {
 });
 
 // GET /api/admin/users - foydalanuvchilar ro'yxati
+// (password_plain faqat parol o'rnatilgan/tiklangandan keyin ko'rinadi - eski
+// foydalanuvchilar uchun bu maydon bo'sh bo'ladi, chunki hash qaytarib bo'lmaydi)
 router.get('/users', async (req, res) => {
   const result = await pool.query(
-    'SELECT id, login, role, allowed_spots, is_active, created_at FROM users ORDER BY id'
+    'SELECT id, login, role, allowed_spots, allowed_sections, password_plain, is_active, created_at FROM users ORDER BY id'
   );
   res.json({
     users: result.rows.map((u) => ({
       ...u,
       allowed_spots: JSON.parse(u.allowed_spots),
+      allowed_sections: JSON.parse(u.allowed_sections || '["dashboard","cash"]'),
       is_active: !!u.is_active,
     })),
   });
@@ -97,6 +100,46 @@ router.put('/users/:id/spots', async (req, res) => {
   }
   const result = await pool.query('UPDATE users SET allowed_spots = $1 WHERE id = $2', [
     JSON.stringify(allowed_spots),
+    id,
+  ]);
+  if (result.rowCount === 0) {
+    return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+  }
+  res.json({ ok: true });
+});
+
+// PUT /api/admin/users/:id/sections - foydalanuvchiga qaysi bo'limlar (Ko'rish/KPI, Kassa kiritish)
+// ko'rinishini belgilaydi
+// body: { allowed_sections: ['dashboard', 'cash'] }
+router.put('/users/:id/sections', async (req, res) => {
+  const { id } = req.params;
+  const { allowed_sections } = req.body || {};
+  if (!Array.isArray(allowed_sections)) {
+    return res.status(400).json({ error: 'allowed_sections massiv bo\'lishi kerak' });
+  }
+  const result = await pool.query('UPDATE users SET allowed_sections = $1 WHERE id = $2', [
+    JSON.stringify(allowed_sections),
+    id,
+  ]);
+  if (result.rowCount === 0) {
+    return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+  }
+  res.json({ ok: true });
+});
+
+// PUT /api/admin/users/:id/password - parolni tiklash (yangi parol o'rnatiladi va
+// admin uni keyinroq ko'ra oladi, chunki plain nusxasi ham saqlanadi)
+// body: { password: "YangiParol123" }
+router.put('/users/:id/password', async (req, res) => {
+  const { id } = req.params;
+  const { password } = req.body || {};
+  if (!password || password.length < 4) {
+    return res.status(400).json({ error: 'Parol kamida 4 belgidan iborat bo\'lishi kerak' });
+  }
+  const hash = bcrypt.hashSync(password, 10);
+  const result = await pool.query('UPDATE users SET password_hash = $1, password_plain = $2 WHERE id = $3', [
+    hash,
+    password,
     id,
   ]);
   if (result.rowCount === 0) {

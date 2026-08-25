@@ -1,7 +1,7 @@
 const express = require('express');
 const { pool } = require('../db/db');
 const poster = require('../services/posterClient');
-const { authRequired } = require('../middleware/auth');
+const { authRequired, requireSection } = require('../middleware/auth');
 const { sumCashCard, checkCashDiff } = require('../services/bonusCalculator');
 const { getBusinessDayWindow } = require('../services/businessDay');
 
@@ -36,7 +36,7 @@ async function fetchTransactionsForBusinessDay(dateStr, spotId) {
 // body: { date: "2026-08-23", spot_id: 6, entered_amount: 3100000 }
 // Xodim "bugungi umumiy kassa" summasini kiritganda chaqiriladi.
 // "date" - ish kuni (05:00 dan keyingi kun 05:00 gacha).
-router.post('/entry', authRequired, async (req, res) => {
+router.post('/entry', authRequired, requireSection('cash'), async (req, res) => {
   const { date, spot_id, entered_amount } = req.body || {};
   if (!date || !spot_id || entered_amount === undefined) {
     return res.status(400).json({ error: 'date, spot_id, entered_amount kerak' });
@@ -82,7 +82,7 @@ router.post('/entry', authRequired, async (req, res) => {
 });
 
 // GET /api/cash/entry?date=2026-08-23&spot_id=6
-router.get('/entry', authRequired, async (req, res) => {
+router.get('/entry', authRequired, requireSection('cash'), async (req, res) => {
   const { date, spot_id } = req.query;
   if (!date || !spot_id) return res.status(400).json({ error: 'date va spot_id kerak' });
 
@@ -96,7 +96,7 @@ router.get('/entry', authRequired, async (req, res) => {
 
 // GET /api/cash/journal?spot_id=6&date_from=2026-08-01&date_to=2026-08-23
 // Har bir kun uchun Poster fakt summasi, xodim kiritgan summa va farqni ko'rsatadi.
-router.get('/journal', authRequired, async (req, res) => {
+router.get('/journal', authRequired, requireSection('cash'), async (req, res) => {
   const { spot_id, date_from, date_to } = req.query;
   if (!spot_id || !date_from || !date_to) {
     return res.status(400).json({ error: 'spot_id, date_from, date_to kerak' });

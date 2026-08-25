@@ -33,6 +33,28 @@ function requireAdmin() {
   }
 }
 
+/**
+ * Foydalanuvchi berilgan bo'limga (masalan 'dashboard' yoki 'cash') kirish huquqi
+ * yo'q bo'lsa, unga ruxsat etilgan boshqa sahifaga (yoki login'ga) yo'naltiradi.
+ */
+function requireSection(section) {
+  requireAuth();
+  const user = getUser();
+  if (!user) return;
+  if (user.role === 'admin') return;
+
+  const allowed = user.allowed_sections || ['dashboard', 'cash'];
+  if (!allowed.includes(section)) {
+    if (allowed.includes('dashboard')) {
+      window.location.href = '/dashboard.html';
+    } else if (allowed.includes('cash')) {
+      window.location.href = '/cash-entry.html';
+    } else {
+      window.location.href = '/login.html';
+    }
+  }
+}
+
 async function apiFetch(path, options = {}) {
   const token = getToken();
   const headers = Object.assign(

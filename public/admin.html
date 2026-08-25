@@ -55,15 +55,23 @@
           <label>Ruxsat etilgan filiallar (hech biri belgilanmasa = hammasi)</label>
           <div id="new-spots-checks" class="spot-checks"></div>
         </div>
+        <div class="field" style="flex:1.2;">
+          <label>Ko'ra oladigan bo'limlar</label>
+          <div class="spot-checks" style="max-height:none;">
+            <label class="spot-check-item"><input type="checkbox" id="new-section-dashboard" checked> KPI (Ko'rish)</label>
+            <label class="spot-check-item"><input type="checkbox" id="new-section-cash" checked> Kassa kiritish</label>
+          </div>
+        </div>
         <button class="btn-primary" id="create-user-btn" style="max-width:160px;">Qo'shish</button>
       </div>
+      <div id="new-user-result" style="margin-top:12px;"></div>
     </div>
 
     <div class="section">
       <h2>Foydalanuvchilar ro'yxati</h2>
       <table>
         <thead>
-          <tr><th>Login</th><th>Rol</th><th>Filiallar</th><th>Holat</th><th>Yaratilgan</th><th>Amallar</th></tr>
+          <tr><th>Login</th><th>Parol</th><th>Rol</th><th>Filiallar</th><th>Bo'limlar</th><th>Holat</th><th>Yaratilgan</th><th>Amallar</th></tr>
         </thead>
         <tbody id="users-body"></tbody>
       </table>
@@ -151,18 +159,28 @@
               }).join(', ')
             : 'Barchasi';
 
+          const sectionNames = (u.allowed_sections || []).map((s) =>
+            s === 'dashboard' ? 'KPI' : s === 'cash' ? 'Kassa' : s
+          ).join(', ') || '—';
+
           const tr = document.createElement('tr');
           tr.dataset.userId = u.id;
           tr.innerHTML = `
             <td>${u.login}</td>
+            <td class="pw-cell">${u.password_plain
+              ? `<code>${u.password_plain}</code>`
+              : '<span style="color:var(--text-dim);">—</span>'}</td>
             <td>${u.role}</td>
             <td class="spots-cell">${spotsNames}</td>
+            <td>${sectionNames}</td>
             <td>${u.is_active
               ? '<span class="badge ok">Faol</span>'
               : '<span class="badge bad">Faolsiz</span>'}</td>
             <td>${u.created_at}</td>
             <td>
               <button class="action-btn" data-act="edit-spots" data-id="${u.id}">Filiallar</button>
+              <button class="action-btn" data-act="edit-sections" data-id="${u.id}">Bo'limlar</button>
+              <button class="action-btn" data-act="reset-password" data-id="${u.id}">Parol tiklash</button>
               <button class="action-btn warn" data-act="toggle-active" data-id="${u.id}" data-active="${u.is_active}">
                 ${u.is_active ? "Faolsizlantirish" : 'Faollashtirish'}
               </button>
@@ -217,6 +235,81 @@
       document.querySelectorAll('[data-act="edit-spots"]').forEach((btn) => {
         btn.addEventListener('click', () => toggleSpotsEditor(btn.dataset.id));
       });
+
+      document.querySelectorAll('[data-act="edit-sections"]').forEach((btn) => {
+        btn.addEventListener('click', () => toggleSectionsEditor(btn.dataset.id));
+      });
+
+      document.querySelectorAll('[data-act="reset-password"]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.id;
+          const newPassword = prompt('Yangi parolni kiriting (kamida 4 belgi):');
+          if (!newPassword) return;
+          if (newPassword.length < 4) {
+            showToast('Parol juda qisqa', true);
+            return;
+          }
+          try {
+            await apiFetch(`/admin/users/${id}/password`, {
+              method: 'PUT',
+              body: JSON.stringify({ password: newPassword }),
+            });
+            showToast('Parol yangilandi');
+            await loadUsers();
+          } catch (e) {
+            showToast('Xato: ' + e.message, true);
+          }
+        });
+      });
+    }
+
+    async function toggleSectionsEditor(userId) {
+      const row = document.querySelector(`tr[data-user-id="${userId}"]`);
+      const existing = row.nextElementSibling;
+      if (existing && existing.classList.contains('sections-edit-row')) {
+        existing.remove();
+        return;
+      }
+      document.querySelectorAll('.spots-edit-row, .sections-edit-row').forEach((el) => el.remove());
+
+      const data = await apiFetch('/admin/users');
+      const user = data.users.find((u) => String(u.id) === String(userId));
+      if (!user) return;
+
+      const editRow = document.createElement('tr');
+      editRow.className = 'sections-edit-row';
+      const td = document.createElement('td');
+      td.colSpan = 8;
+      td.innerHTML = `
+        <div class="spots-edit-panel">
+          <label class="spot-check-item" style="margin-bottom:6px;">
+            <input type="checkbox" id="sec-dashboard-${userId}" ${user.allowed_sections.includes('dashboard') ? 'checked' : ''}> KPI (Ko'rish)
+          </label>
+          <label class="spot-check-item">
+            <input type="checkbox" id="sec-cash-${userId}" ${user.allowed_sections.includes('cash') ? 'checked' : ''}> Kassa kiritish
+          </label>
+          <button class="btn-primary" style="max-width:140px; margin-top:10px;" id="save-sections-${userId}">Saqlash</button>
+        </div>
+      `;
+      editRow.appendChild(td);
+      row.after(editRow);
+
+      document.getElementById(`save-sections-${userId}`).addEventListener('click', async () => {
+        const sections = [];
+        if (document.getElementById(`sec-dashboard-${userId}`).checked) sections.push('dashboard');
+        if (document.getElementById(`sec-cash-${userId}`).checked) sections.push('cash');
+        try {
+          await apiFetch(`/admin/users/${userId}/sections`, {
+            method: 'PUT',
+            body: JSON.stringify({ allowed_sections: sections }),
+          });
+          showToast('Bo\'limlar yangilandi');
+          editRow.remove();
+          await loadUsers();
+        } catch (e) {
+          showToast('Xato: ' + e.message, true);
+        }
+      });
     }
 
     async function toggleSpotsEditor(userId) {
@@ -227,7 +320,7 @@
         return;
       }
       // Boshqa ochiq bo'lgan tahrirlash panellarini yopib qo'yamiz
-      document.querySelectorAll('.spots-edit-row').forEach((el) => el.remove());
+      document.querySelectorAll('.spots-edit-row, .sections-edit-row').forEach((el) => el.remove());
 
       const data = await apiFetch('/admin/users');
       const user = data.users.find((u) => String(u.id) === String(userId));
@@ -236,7 +329,7 @@
       const editRow = document.createElement('tr');
       editRow.className = 'spots-edit-row';
       const td = document.createElement('td');
-      td.colSpan = 6;
+      td.colSpan = 8;
       td.innerHTML = `
         <div class="spots-edit-panel">
           <div class="spot-checks" id="edit-spots-${userId}">
@@ -275,7 +368,10 @@
       const login = document.getElementById('new-login').value.trim();
       const password = document.getElementById('new-password').value;
       const role = document.getElementById('new-role').value;
-      const selected = Array.from(document.querySelectorAll('.new-spot-check:checked')).map((c) => Number(c.value));
+      const selectedSpots = Array.from(document.querySelectorAll('.new-spot-check:checked')).map((c) => Number(c.value));
+      const sections = [];
+      if (document.getElementById('new-section-dashboard').checked) sections.push('dashboard');
+      if (document.getElementById('new-section-cash').checked) sections.push('cash');
 
       if (!login || !password) {
         showToast('Login va parol kiritilishi shart', true);
@@ -285,8 +381,14 @@
       try {
         await apiFetch('/admin/users', {
           method: 'POST',
-          body: JSON.stringify({ login, password, role, allowed_spots: selected }),
+          body: JSON.stringify({ login, password, role, allowed_spots: selectedSpots, allowed_sections: sections }),
         });
+        document.getElementById('new-user-result').innerHTML = `
+          <div class="summary-card total" style="max-width:320px;">
+            <div class="label">Yangi foydalanuvchi yaratildi</div>
+            <div class="value" style="font-size:16px;">${login} / <code style="color:var(--warn);">${password}</code></div>
+          </div>
+        `;
         showToast('Foydalanuvchi qo\'shildi');
         document.getElementById('new-login').value = '';
         document.getElementById('new-password').value = '';

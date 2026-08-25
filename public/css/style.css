@@ -242,6 +242,16 @@ tr:hover td { background: var(--card-hover); }
   border-radius: 8px;
 }
 
+.pw-cell code {
+  background: #0b1220;
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12.5px;
+  color: var(--warn);
+}
+
 /* ---- Chek (receipt) ko'rinishidagi bonus xulosasi ---- */
 .receipt-wrap {
   margin-bottom: 20px;
@@ -437,6 +447,17 @@ tr:hover td { background: var(--card-hover); }
   font-size: 12.5px;
   color: var(--text-dim);
   margin: 0 0 14px;
+}
+
+.journal-row-clickable {
+  cursor: pointer;
+}
+.journal-row-clickable:hover td {
+  background: var(--card-hover);
+}
+.journal-row-clickable.active td {
+  background: rgba(34,197,94,0.12);
+  border-left: 3px solid var(--accent);
 }
 
 /* ---- Admin ---- */

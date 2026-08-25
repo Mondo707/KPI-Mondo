@@ -4,14 +4,15 @@ function renderTopbar(activePage) {
   if (!user) return;
 
   const isAdmin = user.role === 'admin';
+  const allowedSections = isAdmin ? ['dashboard', 'cash'] : (user.allowed_sections || ['dashboard', 'cash']);
 
   const nav = document.createElement('div');
   nav.className = 'topbar';
   nav.innerHTML = `
     <div class="brand">KPI Bonus</div>
     <nav>
-      <a href="/dashboard.html" class="${activePage === 'dashboard' ? 'active' : ''}">Ko'rish</a>
-      <a href="/cash-entry.html" class="${activePage === 'cash' ? 'active' : ''}">Kassa kiritish</a>
+      ${allowedSections.includes('dashboard') ? `<a href="/dashboard.html" class="${activePage === 'dashboard' ? 'active' : ''}">KPI</a>` : ''}
+      ${allowedSections.includes('cash') ? `<a href="/cash-entry.html" class="${activePage === 'cash' ? 'active' : ''}">Kassa kiritish</a>` : ''}
       ${isAdmin ? `<a href="/admin.html" class="${activePage === 'admin' ? 'active' : ''}">Admin panel</a>` : ''}
     </nav>
     <div class="user-info">

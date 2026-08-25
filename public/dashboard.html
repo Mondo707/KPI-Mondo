@@ -67,6 +67,18 @@
       <div class="progress-grid" id="progress-grid"></div>
     </div>
 
+    <div class="section" id="matrix-section" style="display:none;">
+      <h2 style="margin-top:0;">Kunlik savdo — <span id="matrix-date"></span></h2>
+      <p class="journal-sub">Har bir filial bo'yicha, har bir kategoriyadan qancha sotilgani (dona/kg). Bonus bu yerda hisobga olinmaydi.</p>
+      <div style="overflow-x:auto;">
+        <table id="matrix-table">
+          <thead><tr id="matrix-head"></tr></thead>
+          <tbody id="matrix-body"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="matrix-empty" style="display:none;">Bu sana uchun ma'lumot yo'q</div>
+    </div>
+
     <div class="summary-cards">
       <div class="summary-card">
         <div class="label">Yozuvlar soni</div>
@@ -78,7 +90,7 @@
   <script src="/js/api.js"></script>
   <script src="/js/topbar.js"></script>
   <script>
-    requireAuth();
+    requireSection('dashboard');
     renderTopbar('dashboard');
 
     let spotsById = {};
@@ -145,14 +157,75 @@
         document.getElementById('rows-count').textContent = data.count;
         renderProgress(data.rows, date_from, date_to, spot_id);
         renderReceipt(data.rows, date_from, date_to, spot_id);
-        await loadJournal(spot_id, date_from, date_to);
+        await loadJournal(spot_id, date_from, date_to, category);
+        await loadDailySalesMatrix(date_from, date_to);
       } catch (e) {
         showToast('Ma\'lumot yuklashda xato: ' + e.message, true);
       }
     }
 
+    // "Kunlik savdo" matritsasi: filiallar vertikal, kategoriyalar gorizontal.
+    // Faqat bitta sana tanlanganda ko'rsatiladi (filial/kategoriya filtrlaridan qat'i nazar,
+    // hammasini ko'rsatish uchun alohida, filtrsiz so'rov yuboriladi).
+    async function loadDailySalesMatrix(date_from, date_to) {
+      const section = document.getElementById('matrix-section');
+      if (date_from !== date_to) {
+        section.style.display = 'none';
+        return;
+      }
+
+      try {
+        const params = new URLSearchParams({ date_from, date_to });
+        const data = await apiFetch('/bonus?' + params.toString());
+
+        section.style.display = 'block';
+        document.getElementById('matrix-date').textContent = date_from;
+
+        const categories = Object.keys(tiersConfig);
+        const spotIdsWithData = [...new Set(data.rows.map((r) => r.spot_id))];
+        // Foydalanuvchi ko'ra oladigan barcha filiallarni ko'rsatamiz (spot_id select'dagi tartibda)
+        const allSpotOptions = Array.from(document.getElementById('spot_id').options)
+          .filter((o) => o.value !== '')
+          .map((o) => Number(o.value));
+        const spotIds = allSpotOptions.length ? allSpotOptions : spotIdsWithData;
+
+        const emptyEl = document.getElementById('matrix-empty');
+        if (!data.rows.length || !spotIds.length) {
+          document.getElementById('matrix-head').innerHTML = '';
+          document.getElementById('matrix-body').innerHTML = '';
+          emptyEl.style.display = 'block';
+          return;
+        }
+        emptyEl.style.display = 'none';
+
+        // spot_id + category -> quantity xaritasi
+        const qtyMap = new Map();
+        data.rows.forEach((r) => {
+          qtyMap.set(`${r.spot_id}::${r.category}`, r.quantity);
+        });
+
+        const head = document.getElementById('matrix-head');
+        head.innerHTML = '<th>Filial</th>' + categories.map((c) => {
+          const unit = tiersConfig[c].unit === 'kg' ? ' (kg)' : '';
+          return `<th>${c}${unit}</th>`;
+        }).join('');
+
+        const body = document.getElementById('matrix-body');
+        body.innerHTML = spotIds.map((spotId) => {
+          const cells = categories.map((c) => {
+            const qty = qtyMap.get(`${spotId}::${c}`);
+            const display = qty ? (Math.round(qty * 100) / 100) : '—';
+            return `<td>${display}</td>`;
+          }).join('');
+          return `<tr><td><b>${spotsById[spotId] || ('#' + spotId)}</b></td>${cells}</tr>`;
+        }).join('');
+      } catch (e) {
+        showToast('Kunlik savdo jadvalini yuklashda xato: ' + e.message, true);
+      }
+    }
+
     // Kunlik bonus jurnali — faqat bitta filial tanlanganda ko'rsatiladi
-    async function loadJournal(spot_id, date_from, date_to) {
+    async function loadJournal(spot_id, date_from, date_to, category) {
       const section = document.getElementById('journal-section');
       if (!spot_id) {
         section.style.display = 'none';
@@ -161,6 +234,7 @@
 
       try {
         const params = new URLSearchParams({ spot_id, date_from, date_to });
+        if (category) params.set('category', category);
         const data = await apiFetch('/bonus/journal?' + params.toString());
 
         section.style.display = 'block';
@@ -179,6 +253,8 @@
 
         data.entries.forEach((e) => {
           const tr = document.createElement('tr');
+          tr.className = 'journal-row-clickable';
+          tr.dataset.date = e.date;
           tr.innerHTML = `
             <td>${e.date}</td>
             <td>${formatMoney(e.bonus)}</td>
@@ -186,10 +262,31 @@
               ? '<span class="badge ok">To\'landi</span>'
               : '<span class="badge bad">To\'lanmadi (kassa farqi)</span>'}</td>
           `;
+          tr.addEventListener('click', () => showReceiptForDate(e.date, spot_id, category));
           tbody.appendChild(tr);
         });
       } catch (e) {
         showToast('Jurnalni yuklashda xato: ' + e.message, true);
+      }
+    }
+
+    // Jurnaldagi bitta sana ustiga bosilganda, o'sha kun uchun chekni ko'rsatadi
+    // (pog'ona/progress ma'lumotisiz - faqat nima, qancha sotilgani va bonus).
+    async function showReceiptForDate(date, spot_id, category) {
+      try {
+        const params = new URLSearchParams({ date_from: date, date_to: date, spot_id });
+        if (category) params.set('category', category);
+        const data = await apiFetch('/bonus?' + params.toString());
+
+        renderReceipt(data.rows, date, date, spot_id);
+
+        document.querySelectorAll('.journal-row-clickable').forEach((row) => {
+          row.classList.toggle('active', row.dataset.date === date);
+        });
+
+        document.getElementById('receipt-wrap').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (e) {
+        showToast('Chekni yuklashda xato: ' + e.message, true);
       }
     }
 

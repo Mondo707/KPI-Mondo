@@ -85,19 +85,29 @@ async function syncDate(date) {
  * Hozirgi vaqtga mos "ish kuni"ni aniqlaydi. Masalan agar hozir soat 02:00 bo'lsa
  * (ya'ni 05:00 dan oldin), bu hali "kechagi" ish kuniga tegishli hisoblanadi.
  */
+let isSyncing = false;
+
 async function runSync() {
+  if (isSyncing) {
+    console.log('[scheduler] Oldingi sinxronlash hali tugamagan, bu safar o\'tkazib yuborildi.');
+    return;
+  }
+  isSyncing = true;
   const businessDate = getCurrentBusinessDate();
   try {
     await syncDate(businessDate);
   } catch (e) {
     console.error('[scheduler] Xato:', e.message);
+  } finally {
+    isSyncing = false;
   }
 }
 
 function startScheduler() {
+  const intervalMinutes = Number(process.env.SYNC_INTERVAL_MINUTES || 1);
   runSync();
-  cron.schedule('*/5 * * * *', runSync);
-  console.log('[scheduler] Har 5 daqiqada avtomatik yangilanish yoqildi (ish kuni: 05:00-05:00).');
+  cron.schedule(`*/${intervalMinutes} * * * *`, runSync);
+  console.log(`[scheduler] Har ${intervalMinutes} daqiqada avtomatik yangilanish yoqildi (ish kuni: 05:00-05:00).`);
 }
 
 module.exports = { startScheduler, syncDate };

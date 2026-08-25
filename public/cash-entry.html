@@ -28,10 +28,10 @@
       <div class="journal-head">
         <h2>Kassa jurnali — <span id="journal-spot-name"></span></h2>
       </div>
-      <p class="journal-sub">Har bir kun uchun Poster'dagi fakt savdo, xodim kiritgan summa va ular orasidagi farq.</p>
+      <p class="journal-sub">Har bir kun uchun Poster'dagi savdo, xodim kiritgan fakt summa va ular orasidagi farq.</p>
       <table>
         <thead>
-          <tr><th>Sana</th><th>Poster (fakt)</th><th>Kiritilgan</th><th>Farq (so'mda)</th><th>Holat</th></tr>
+          <tr><th>Sana</th><th>Poster</th><th>Fakt</th><th>Farq (so'mda)</th><th>Holat</th></tr>
         </thead>
         <tbody id="cash-journal-body"></tbody>
       </table>
@@ -42,7 +42,7 @@
   <script src="/js/api.js"></script>
   <script src="/js/topbar.js"></script>
   <script>
-    requireAuth();
+    requireSection('cash');
     renderTopbar('cash');
 
     let spotsById = {};
