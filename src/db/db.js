@@ -20,10 +20,8 @@ async function init() {
       id SERIAL PRIMARY KEY,
       login TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      password_plain TEXT,
       role TEXT NOT NULL DEFAULT 'viewer',
       allowed_spots TEXT NOT NULL DEFAULT '[]',
-      allowed_sections TEXT NOT NULL DEFAULT '["dashboard","cash"]',
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TIMESTAMP DEFAULT now()
     );
@@ -62,11 +60,9 @@ async function init() {
     );
   `);
 
-  // Eski bazalarda yangi ustunlar bo'lmasligi mumkin - xavfsiz migratsiya
+  // Eski (SQLite davridan qolgan) bazalarda is_active ustuni bo'lmasligi mumkin
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active INTEGER NOT NULL DEFAULT 1;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_plain TEXT;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_sections TEXT NOT NULL DEFAULT '["dashboard","cash"]';
   `);
 }
 

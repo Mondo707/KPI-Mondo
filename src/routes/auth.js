@@ -25,16 +25,15 @@ router.post('/login', async (req, res) => {
     }
 
     const allowedSpots = JSON.parse(user.allowed_spots || '[]');
-    const allowedSections = JSON.parse(user.allowed_sections || '["dashboard","cash"]');
     const token = jwt.sign(
-      { id: user.id, login: user.login, role: user.role, allowed_spots: allowedSpots, allowed_sections: allowedSections },
+      { id: user.id, login: user.login, role: user.role, allowed_spots: allowedSpots },
       JWT_SECRET,
       { expiresIn: '12h' }
     );
 
     res.json({
       token,
-      user: { id: user.id, login: user.login, role: user.role, allowed_spots: allowedSpots, allowed_sections: allowedSections },
+      user: { id: user.id, login: user.login, role: user.role, allowed_spots: allowedSpots },
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

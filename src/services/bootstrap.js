@@ -28,8 +28,8 @@ async function ensureAdminUser() {
 
   const hash = bcrypt.hashSync(password, 10);
   await pool.query(
-    'INSERT INTO users (login, password_hash, password_plain, role, allowed_spots, allowed_sections) VALUES ($1, $2, $3, $4, $5, $6)',
-    [login, hash, password, 'admin', '[]', '["dashboard","cash"]']
+    'INSERT INTO users (login, password_hash, role, allowed_spots) VALUES ($1, $2, $3, $4)',
+    [login, hash, 'admin', '[]']
   );
   console.log(`[bootstrap] Admin foydalanuvchi yaratildi: ${login}`);
 }
