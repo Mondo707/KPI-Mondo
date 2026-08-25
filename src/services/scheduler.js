@@ -1,12 +1,13 @@
-// Har 5 daqiqada bugungi (va agar kerak bo'lsa kechagi, smena kech tugagan holatlar uchun)
-// tranzaksiyalarni Poster'dan olib, daily_bonus jadvalini yangilab turadi.
+// Har 5 daqiqada bugungi "ish kuni" (05:00-05:00 oynasi) tranzaksiyalarini
+// Poster'dan olib, daily_bonus jadvalini yangilab turadi.
 
 const cron = require('node-cron');
 const { pool } = require('../db/db');
 const poster = require('./posterClient');
 const { calculateDailyBonus } = require('./bonusCalculator');
+const { getBusinessDayWindow, getCurrentBusinessDate } = require('./businessDay');
 
-async function fetchAllTransactions(date) {
+async function fetchTransactionsForCalendarDate(date) {
   let allTx = [];
   let page = 1;
   while (true) {
@@ -21,6 +22,22 @@ async function fetchAllTransactions(date) {
     page += 1;
   }
   return allTx;
+}
+
+/**
+ * Berilgan "ish kuni" (masalan '2026-08-23', 05:00-05:00 oynasi) uchun barcha
+ * tegishli tranzaksiyalarni Poster'dan yig'ib, oynaga mos ravishda filtrlaydi.
+ */
+async function fetchTransactionsForBusinessDay(dateStr) {
+  const { startStr, endStr, fetchDates } = getBusinessDayWindow(dateStr);
+
+  let allTx = [];
+  for (const calendarDate of fetchDates) {
+    const tx = await fetchTransactionsForCalendarDate(calendarDate);
+    allTx = allTx.concat(tx);
+  }
+
+  return allTx.filter((tx) => tx.date_close >= startStr && tx.date_close < endStr);
 }
 
 async function upsertDailyBonus(date, spotId, breakdown) {
@@ -43,8 +60,11 @@ async function upsertDailyBonus(date, spotId, breakdown) {
   }
 }
 
+/**
+ * @param {string} date "Ish kuni" - masalan '2026-08-23' (05:00 dan keyingi kun 05:00 gacha)
+ */
 async function syncDate(date) {
-  const allTx = await fetchAllTransactions(date);
+  const allTx = await fetchTransactionsForBusinessDay(date);
 
   const bySpot = new Map();
   for (const tx of allTx) {
@@ -58,24 +78,26 @@ async function syncDate(date) {
     await upsertDailyBonus(date, spotId, breakdown);
   }
 
-  console.log(`[scheduler] ${date} uchun ${bySpot.size} ta filial yangilandi (${allTx.length} tranzaksiya)`);
+  console.log(`[scheduler] ${date} (ish kuni) uchun ${bySpot.size} ta filial yangilandi (${allTx.length} tranzaksiya)`);
 }
 
+/**
+ * Hozirgi vaqtga mos "ish kuni"ni aniqlaydi. Masalan agar hozir soat 02:00 bo'lsa
+ * (ya'ni 05:00 dan oldin), bu hali "kechagi" ish kuniga tegishli hisoblanadi.
+ */
 async function runSync() {
-  const today = new Date().toISOString().slice(0, 10);
+  const businessDate = getCurrentBusinessDate();
   try {
-    await syncDate(today);
+    await syncDate(businessDate);
   } catch (e) {
     console.error('[scheduler] Xato:', e.message);
   }
 }
 
 function startScheduler() {
-  // Darhol bir marta ishga tushirish
   runSync();
-  // Har 5 daqiqada
   cron.schedule('*/5 * * * *', runSync);
-  console.log('[scheduler] Har 5 daqiqada avtomatik yangilanish yoqildi.');
+  console.log('[scheduler] Har 5 daqiqada avtomatik yangilanish yoqildi (ish kuni: 05:00-05:00).');
 }
 
 module.exports = { startScheduler, syncDate };

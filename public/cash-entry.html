@@ -7,13 +7,13 @@
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-  <div class="container" style="max-width:480px;">
-    <div class="section">
+  <div class="container" style="max-width:720px;">
+    <div class="section" style="max-width:480px;">
       <h2>Bugungi umumiy kassani kiriting</h2>
       <label for="spot_id">Filial</label>
       <select id="spot_id"></select>
 
-      <label for="date">Sana</label>
+      <label for="date">Sana (ish kuni)</label>
       <input type="date" id="date">
 
       <label for="amount">Umumiy kassa summasi (so'm)</label>
@@ -23,6 +23,20 @@
 
       <div id="result" style="margin-top:20px;"></div>
     </div>
+
+    <div class="section journal-section">
+      <div class="journal-head">
+        <h2>Kassa jurnali — <span id="journal-spot-name"></span></h2>
+      </div>
+      <p class="journal-sub">Har bir kun uchun Poster'dagi fakt savdo, xodim kiritgan summa va ular orasidagi farq.</p>
+      <table>
+        <thead>
+          <tr><th>Sana</th><th>Poster (fakt)</th><th>Kiritilgan</th><th>Farq (so'mda)</th><th>Holat</th></tr>
+        </thead>
+        <tbody id="cash-journal-body"></tbody>
+      </table>
+      <div class="empty-state" id="cash-journal-empty" style="display:none;">Bu filial uchun hali yozuv yo'q</div>
+    </div>
   </div>
 
   <script src="/js/api.js"></script>
@@ -31,22 +45,73 @@
     requireAuth();
     renderTopbar('cash');
 
+    let spotsById = {};
+
     async function loadSpots() {
       try {
         const data = await apiFetch('/spots');
         const select = document.getElementById('spot_id');
         data.spots.forEach((s) => {
+          spotsById[s.spot_id] = s.name;
           const opt = document.createElement('option');
           opt.value = s.spot_id;
           opt.textContent = s.name;
           select.appendChild(opt);
         });
+        if (data.spots.length) {
+          await loadCashJournal(data.spots[0].spot_id);
+        }
       } catch (e) {
         showToast('Filiallarni yuklab bo\'lmadi: ' + e.message, true);
       }
     }
 
+    async function loadCashJournal(spotId) {
+      const tbody = document.getElementById('cash-journal-body');
+      const emptyEl = document.getElementById('cash-journal-empty');
+      document.getElementById('journal-spot-name').textContent = spotsById[spotId] || ('#' + spotId);
+
+      const dateTo = todayStr();
+      const dateFromObj = new Date();
+      dateFromObj.setDate(dateFromObj.getDate() - 30);
+      const dateFrom = dateFromObj.toISOString().slice(0, 10);
+
+      try {
+        const params = new URLSearchParams({ spot_id: spotId, date_from: dateFrom, date_to: dateTo });
+        const data = await apiFetch('/cash/journal?' + params.toString());
+
+        tbody.innerHTML = '';
+        if (!data.entries.length) {
+          emptyEl.style.display = 'block';
+          return;
+        }
+        emptyEl.style.display = 'none';
+
+        data.entries.forEach((e) => {
+          const diffSign = e.diff_amount > 0 ? '+' : '';
+          const diffColor = e.ok ? 'var(--text)' : 'var(--danger)';
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${e.date}</td>
+            <td>${formatMoney(e.poster_total)}</td>
+            <td>${formatMoney(e.entered_amount)}</td>
+            <td style="color:${diffColor}; font-weight:600;">${diffSign}${formatMoney(e.diff_amount)}</td>
+            <td>${e.ok
+              ? '<span class="badge ok">Mos keldi</span>'
+              : '<span class="badge bad">Farq katta</span>'}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        showToast('Jurnalni yuklashda xato: ' + e.message, true);
+      }
+    }
+
     document.getElementById('date').value = todayStr();
+
+    document.getElementById('spot_id').addEventListener('change', (e) => {
+      loadCashJournal(e.target.value);
+    });
 
     document.getElementById('submit-btn').addEventListener('click', async () => {
       const spot_id = Number(document.getElementById('spot_id').value);
@@ -71,10 +136,11 @@
             <div class="value">${formatMoney(data.poster_total)}</div>
           </div>
           <p style="margin-top:12px; color:${data.ok ? 'var(--accent)' : 'var(--danger)'};">
-            ${data.message} (farq: ${data.diff_percent}%)
+            ${data.message} (farq: ${data.diff_amount > 0 ? '+' : ''}${formatMoney(data.diff_amount)})
           </p>
         `;
         showToast(data.ok ? 'Kassa tasdiqlandi' : 'Farq katta - bonus bekor qilindi', !data.ok);
+        await loadCashJournal(spot_id);
       } catch (e) {
         resultEl.innerHTML = '';
         showToast('Xato: ' + e.message, true);
