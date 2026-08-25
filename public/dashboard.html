@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ko'rish — KPI Bonus</title>
+<title>KPI — KPI Bonus</title>
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -50,7 +50,7 @@
         <h2>Kunlik bonus jurnali — <span id="journal-spot-name"></span></h2>
         <div class="month-total">Tanlangan davr: <b id="journal-total">0 so'm</b></div>
       </div>
-      <p class="journal-sub">Har bir kun uchun jami bonus (barcha kategoriyalar yig'indisi) va kassa holati.</p>
+      <p class="journal-sub">Har bir kun uchun jami bonus (barcha kategoriyalar yig'indisi) va kassa holati. Sana ustiga bosing — yuqorida shu kunlik chek ko'rinadi.</p>
       <table>
         <thead>
           <tr><th>Sana</th><th>Jami bonus</th><th>Holat</th></tr>
@@ -67,18 +67,6 @@
       <div class="progress-grid" id="progress-grid"></div>
     </div>
 
-    <div class="section" id="matrix-section" style="display:none;">
-      <h2 style="margin-top:0;">Kunlik savdo — <span id="matrix-date"></span></h2>
-      <p class="journal-sub">Har bir filial bo'yicha, har bir kategoriyadan qancha sotilgani (dona/kg). Bonus bu yerda hisobga olinmaydi.</p>
-      <div style="overflow-x:auto;">
-        <table id="matrix-table">
-          <thead><tr id="matrix-head"></tr></thead>
-          <tbody id="matrix-body"></tbody>
-        </table>
-      </div>
-      <div class="empty-state" id="matrix-empty" style="display:none;">Bu sana uchun ma'lumot yo'q</div>
-    </div>
-
     <div class="summary-cards">
       <div class="summary-card">
         <div class="label">Yozuvlar soni</div>
@@ -89,6 +77,7 @@
 
   <script src="/js/api.js"></script>
   <script src="/js/topbar.js"></script>
+  <script src="/js/categoryOrder.js"></script>
   <script>
     requireSection('dashboard');
     renderTopbar('dashboard');
@@ -129,12 +118,7 @@
 
     function populateCategories() {
       const select = document.getElementById('category');
-      const categories = [
-        'Лимонады','Милкшейк','Фреш','Фрозен','Манго сок','Вафли','Десерты',
-        'Сан-себастьян','Фасовка','Чай','Кофе 250 мл','Кофе 350 мл','Чашка кофе',
-        'Айс кофе','Смесь','Шарик'
-      ];
-      categories.forEach((c) => {
+      CATEGORY_ORDER.forEach((c) => {
         const opt = document.createElement('option');
         opt.value = c;
         opt.textContent = c;
@@ -158,69 +142,8 @@
         renderProgress(data.rows, date_from, date_to, spot_id);
         renderReceipt(data.rows, date_from, date_to, spot_id);
         await loadJournal(spot_id, date_from, date_to, category);
-        await loadDailySalesMatrix(date_from, date_to);
       } catch (e) {
         showToast('Ma\'lumot yuklashda xato: ' + e.message, true);
-      }
-    }
-
-    // "Kunlik savdo" matritsasi: filiallar vertikal, kategoriyalar gorizontal.
-    // Faqat bitta sana tanlanganda ko'rsatiladi (filial/kategoriya filtrlaridan qat'i nazar,
-    // hammasini ko'rsatish uchun alohida, filtrsiz so'rov yuboriladi).
-    async function loadDailySalesMatrix(date_from, date_to) {
-      const section = document.getElementById('matrix-section');
-      if (date_from !== date_to) {
-        section.style.display = 'none';
-        return;
-      }
-
-      try {
-        const params = new URLSearchParams({ date_from, date_to });
-        const data = await apiFetch('/bonus?' + params.toString());
-
-        section.style.display = 'block';
-        document.getElementById('matrix-date').textContent = date_from;
-
-        const categories = Object.keys(tiersConfig);
-        const spotIdsWithData = [...new Set(data.rows.map((r) => r.spot_id))];
-        // Foydalanuvchi ko'ra oladigan barcha filiallarni ko'rsatamiz (spot_id select'dagi tartibda)
-        const allSpotOptions = Array.from(document.getElementById('spot_id').options)
-          .filter((o) => o.value !== '')
-          .map((o) => Number(o.value));
-        const spotIds = allSpotOptions.length ? allSpotOptions : spotIdsWithData;
-
-        const emptyEl = document.getElementById('matrix-empty');
-        if (!data.rows.length || !spotIds.length) {
-          document.getElementById('matrix-head').innerHTML = '';
-          document.getElementById('matrix-body').innerHTML = '';
-          emptyEl.style.display = 'block';
-          return;
-        }
-        emptyEl.style.display = 'none';
-
-        // spot_id + category -> quantity xaritasi
-        const qtyMap = new Map();
-        data.rows.forEach((r) => {
-          qtyMap.set(`${r.spot_id}::${r.category}`, r.quantity);
-        });
-
-        const head = document.getElementById('matrix-head');
-        head.innerHTML = '<th>Filial</th>' + categories.map((c) => {
-          const unit = tiersConfig[c].unit === 'kg' ? ' (kg)' : '';
-          return `<th>${c}${unit}</th>`;
-        }).join('');
-
-        const body = document.getElementById('matrix-body');
-        body.innerHTML = spotIds.map((spotId) => {
-          const cells = categories.map((c) => {
-            const qty = qtyMap.get(`${spotId}::${c}`);
-            const display = qty ? (Math.round(qty * 100) / 100) : '—';
-            return `<td>${display}</td>`;
-          }).join('');
-          return `<tr><td><b>${spotsById[spotId] || ('#' + spotId)}</b></td>${cells}</tr>`;
-        }).join('');
-      } catch (e) {
-        showToast('Kunlik savdo jadvalini yuklashda xato: ' + e.message, true);
       }
     }
 
@@ -274,7 +197,8 @@
     // (pog'ona/progress ma'lumotisiz - faqat nima, qancha sotilgani va bonus).
     async function showReceiptForDate(date, spot_id, category) {
       try {
-        const params = new URLSearchParams({ date_from: date, date_to: date, spot_id });
+        const params = new URLSearchParams({ date_from: date, date_to: date });
+        if (spot_id) params.set('spot_id', spot_id);
         if (category) params.set('category', category);
         const data = await apiFetch('/bonus?' + params.toString());
 
@@ -308,7 +232,10 @@
       const byCategory = new Map(rows.map((r) => [r.category, r]));
       grid.innerHTML = '';
 
-      Object.entries(tiersConfig).forEach(([category, cfg]) => {
+      const orderedCats = sortByCategoryOrder(Object.keys(tiersConfig));
+
+      orderedCats.forEach((category) => {
+        const cfg = tiersConfig[category];
         const row = byCategory.get(category);
         const qty = row ? row.quantity : 0;
 
@@ -354,35 +281,56 @@
       });
     }
 
+    // Chek: bitta sana tanlanganda ko'rsatiladi. Agar bitta filial tanlangan bo'lsa -
+    // shu filial bo'yicha, agar "Barchasi" tanlangan bo'lsa - barcha filiallar
+    // yig'indisi bo'yicha ko'rsatadi.
     function renderReceipt(rows, date_from, date_to, spot_id) {
       const wrap = document.getElementById('receipt-wrap');
-      if (date_from !== date_to || !spot_id) {
+      if (date_from !== date_to) {
         wrap.style.display = 'none';
         return;
       }
       wrap.style.display = 'flex';
 
-      document.getElementById('receipt-spot-name').textContent = spotsById[spot_id] || ('#' + spot_id);
+      document.getElementById('receipt-spot-name').textContent = spot_id
+        ? (spotsById[spot_id] || ('#' + spot_id))
+        : 'Barcha filiallar';
       document.getElementById('receipt-date').textContent = date_from;
 
-      const sold = rows.filter((r) => r.quantity > 0);
-      const linesEl = document.getElementById('receipt-lines');
+      // Kategoriya bo'yicha yig'indi (bitta filial bo'lsa ham, "barchasi" bo'lsa ham
+      // bir xil ishlaydi - chunki bir filial tanlanganda faqat 1 ta qator yig'iladi).
+      const byCategory = new Map();
+      rows.forEach((r) => {
+        if (!byCategory.has(r.category)) {
+          byCategory.set(r.category, { quantity: 0, bonus: 0, cashDiffOk: true });
+        }
+        const acc = byCategory.get(r.category);
+        acc.quantity += r.quantity;
+        acc.bonus += r.cash_diff_ok ? r.bonus : 0;
+        if (!r.cash_diff_ok) acc.cashDiffOk = false;
+      });
 
-      if (!sold.length) {
+      const orderedCats = sortByCategoryOrder([...byCategory.keys()]).filter(
+        (c) => byCategory.get(c).quantity > 0
+      );
+
+      const linesEl = document.getElementById('receipt-lines');
+      if (!orderedCats.length) {
         linesEl.innerHTML = '<div class="r-empty">Bu kunda sotuv qayd etilmagan</div>';
       } else {
-        linesEl.innerHTML = sold.map((r) => {
-          const cfg = tiersConfig[r.category];
+        linesEl.innerHTML = orderedCats.map((cat) => {
+          const acc = byCategory.get(cat);
+          const cfg = tiersConfig[cat];
           const unit = cfg ? cfg.unit : 'dona';
-          const qtyDisplay = Math.round(r.quantity * 100) / 100;
-          return `<div class="r-line"><span>${r.category} &times; ${qtyDisplay} ${unit}</span><span class="v">${formatMoney(r.cash_diff_ok ? r.bonus : 0)}</span></div>`;
+          const qtyDisplay = Math.round(acc.quantity * 100) / 100;
+          return `<div class="r-line"><span>${cat} &times; ${qtyDisplay} ${unit}</span><span class="v">${formatMoney(acc.bonus)}</span></div>`;
         }).join('');
       }
 
-      const total = sold.reduce((sum, r) => sum + (r.cash_diff_ok ? r.bonus : 0), 0);
+      const total = orderedCats.reduce((sum, c) => sum + byCategory.get(c).bonus, 0);
       document.getElementById('receipt-total').textContent = formatMoney(total);
 
-      const anyBad = sold.some((r) => !r.cash_diff_ok);
+      const anyBad = orderedCats.some((c) => !byCategory.get(c).cashDiffOk);
       const statusEl = document.getElementById('receipt-status');
       if (anyBad) {
         statusEl.className = 'r-status bad';

@@ -12,6 +12,7 @@ function renderTopbar(activePage) {
     <div class="brand">KPI Bonus</div>
     <nav>
       ${allowedSections.includes('dashboard') ? `<a href="/dashboard.html" class="${activePage === 'dashboard' ? 'active' : ''}">KPI</a>` : ''}
+      ${allowedSections.includes('dashboard') ? `<a href="/daily-sales.html" class="${activePage === 'sales' ? 'active' : ''}">Kunlik savdo</a>` : ''}
       ${allowedSections.includes('cash') ? `<a href="/cash-entry.html" class="${activePage === 'cash' ? 'active' : ''}">Kassa kiritish</a>` : ''}
       ${isAdmin ? `<a href="/admin.html" class="${activePage === 'admin' ? 'active' : ''}">Admin panel</a>` : ''}
     </nav>

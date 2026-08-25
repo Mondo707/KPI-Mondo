@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kunlik savdo — KPI Bonus</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="filters">
+      <div class="field">
+        <label for="date_from">Sanadan</label>
+        <input type="date" id="date_from">
+      </div>
+      <div class="field">
+        <label for="date_to">Sanagacha</label>
+        <input type="date" id="date_to">
+      </div>
+      <div class="field">
+        <label for="spot_id">Filial</label>
+        <select id="spot_id">
+          <option value="">Barchasi</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="category">Mahsulot kategoriyasi</label>
+        <select id="category">
+          <option value="">Barchasi</option>
+        </select>
+      </div>
+      <button class="btn-primary apply-btn" id="apply-btn" style="max-width:140px;">Qo'llash</button>
+    </div>
+
+    <div class="section" id="matrix-section">
+      <h2 style="margin-top:0;">Kunlik savdo — <span id="matrix-period"></span></h2>
+      <p class="journal-sub">Har bir filial bo'yicha, har bir kategoriyadan qancha sotilgani (dona/kg). Bonus bu yerda hisobga olinmaydi.</p>
+      <div style="overflow-x:auto;">
+        <table id="matrix-table">
+          <thead><tr id="matrix-head"></tr></thead>
+          <tbody id="matrix-body"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="matrix-empty" style="display:none;">Bu davr uchun ma'lumot yo'q</div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/topbar.js"></script>
+  <script src="/js/categoryOrder.js"></script>
+  <script>
+    requireSection('dashboard');
+    renderTopbar('sales');
+
+    let spotsById = {};
+    let tiersConfig = {};
+
+    function setDefaultDates() {
+      const today = todayStr();
+      document.getElementById('date_from').value = today;
+      document.getElementById('date_to').value = today;
+    }
+
+    async function loadTiersConfig() {
+      try {
+        const data = await apiFetch('/bonus/tiers');
+        tiersConfig = data.categories;
+      } catch (e) {
+        showToast('Pog\'ona jadvalini yuklab bo\'lmadi: ' + e.message, true);
+      }
+    }
+
+    async function loadSpots() {
+      try {
+        const data = await apiFetch('/spots');
+        const select = document.getElementById('spot_id');
+        data.spots.forEach((s) => {
+          spotsById[s.spot_id] = s.name;
+          const opt = document.createElement('option');
+          opt.value = s.spot_id;
+          opt.textContent = s.name;
+          select.appendChild(opt);
+        });
+      } catch (e) {
+        showToast('Filiallarni yuklab bo\'lmadi: ' + e.message, true);
+      }
+    }
+
+    function populateCategories() {
+      const select = document.getElementById('category');
+      CATEGORY_ORDER.forEach((c) => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        select.appendChild(opt);
+      });
+    }
+
+    // Filial vertikal (qatorlar), kategoriya gorizontal (ustunlar). Davr bo'yicha
+    // miqdorlar yig'ib (summalab) ko'rsatiladi - bitta kun ham, bir necha kun ham bo'lishi mumkin.
+    async function loadMatrix() {
+      const date_from = document.getElementById('date_from').value;
+      const date_to = document.getElementById('date_to').value;
+      const spot_id = document.getElementById('spot_id').value;
+      const category = document.getElementById('category').value;
+
+      const params = new URLSearchParams({ date_from, date_to });
+      if (spot_id) params.set('spot_id', spot_id);
+      if (category) params.set('category', category);
+
+      try {
+        const data = await apiFetch('/bonus?' + params.toString());
+
+        document.getElementById('matrix-period').textContent =
+          date_from === date_to ? date_from : `${date_from} — ${date_to}`;
+
+        // Ustunlar: agar kategoriya tanlangan bo'lsa faqat o'shani, aks holda
+        // belgilangan tartibda hammasini ko'rsatamiz.
+        const allCats = sortByCategoryOrder(Object.keys(tiersConfig));
+        const categories = category ? [category] : allCats;
+
+        // Qatorlar: agar filial tanlangan bo'lsa faqat o'shani, aks holda
+        // foydalanuvchi ko'ra oladigan barcha filiallarni.
+        const allSpotOptions = Array.from(document.getElementById('spot_id').options)
+          .filter((o) => o.value !== '')
+          .map((o) => Number(o.value));
+        const spotIds = spot_id ? [Number(spot_id)] : allSpotOptions;
+
+        const emptyEl = document.getElementById('matrix-empty');
+        if (!spotIds.length) {
+          document.getElementById('matrix-head').innerHTML = '';
+          document.getElementById('matrix-body').innerHTML = '';
+          emptyEl.style.display = 'block';
+          return;
+        }
+        emptyEl.style.display = 'none';
+
+        // spot_id + category -> davr bo'yicha yig'ilgan miqdor
+        const qtyMap = new Map();
+        data.rows.forEach((r) => {
+          const key = `${r.spot_id}::${r.category}`;
+          qtyMap.set(key, (qtyMap.get(key) || 0) + r.quantity);
+        });
+
+        const head = document.getElementById('matrix-head');
+        head.innerHTML = '<th>Filial</th>' + categories.map((c) => {
+          const cfg = tiersConfig[c];
+          const unit = cfg && cfg.unit === 'kg' ? ' (kg)' : '';
+          return `<th>${c}${unit}</th>`;
+        }).join('');
+
+        const body = document.getElementById('matrix-body');
+        body.innerHTML = spotIds.map((sId) => {
+          const cells = categories.map((c) => {
+            const qty = qtyMap.get(`${sId}::${c}`);
+            const display = qty ? (Math.round(qty * 100) / 100) : '—';
+            return `<td>${display}</td>`;
+          }).join('');
+          return `<tr><td><b>${spotsById[sId] || ('#' + sId)}</b></td>${cells}</tr>`;
+        }).join('');
+      } catch (e) {
+        showToast('Ma\'lumot yuklashda xato: ' + e.message, true);
+      }
+    }
+
+    document.getElementById('apply-btn').addEventListener('click', loadMatrix);
+
+    (async function init() {
+      setDefaultDates();
+      populateCategories();
+      await loadTiersConfig();
+      await loadSpots();
+      await loadMatrix();
+    })();
+  </script>
+</body>
+</html>
