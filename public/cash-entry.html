@@ -90,12 +90,12 @@
       </table>
 
       <table class="doc-table">
-        <thead><tr><th colspan="2">Общая Касса</th></tr></thead>
+        <thead><tr><th>Общая Касса</th><th id="pp-total-kassa-cell"></th></tr></thead>
         <tbody id="pp-paytype-body"></tbody>
         <tbody>
           <tr class="doc-spacer"><td colspan="2"></td></tr>
           <tr><td>Общие Расходы</td><td id="pp-total-expense-cell"></td></tr>
-          <tr><td>Тоза</td><td id="pp-toza-cell"></td></tr>
+          <tr class="doc-total-row"><td>Тоза</td><td id="pp-toza-cell"></td></tr>
         </tbody>
       </table>
 
@@ -368,10 +368,11 @@
     function preparePrint() {
       const spot_id = document.getElementById('spot_id').value;
       const date = document.getElementById('entry_date').value;
-      const { totalExpense, totalToza } = recalc();
+      const { totalExpense, totalToza, totalPay, total } = recalc();
 
       document.getElementById('pp-spot').textContent = spotsById[spot_id] || '';
       document.getElementById('pp-date').textContent = date;
+      document.getElementById('pp-total-kassa-cell').textContent = formatMoney(total);
 
       // Rasxodlar - faqat mavjud bo'lsa jadval ko'rsatiladi
       const expenseRows = [];
