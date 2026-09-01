@@ -74,20 +74,36 @@
     </div>
 
     <div class="print-preview" id="print-preview">
-      <img src="/img/logo.png" alt="Mondo">
-      <div class="pt" id="pp-spot">FILIAL</div>
-      <div class="ps" id="pp-date">KASSA HISOBOTI</div>
-      <hr>
-      <div class="pline"><span>Тоза</span><span id="pp-toza">0</span></div>
-      <div class="pline"><span>Umumiy rasxod</span><span id="pp-expense">0</span></div>
-      <div class="pline"><span>To'lov turlari</span><span id="pp-paytypes">0</span></div>
-      <hr>
-      <div class="pline ptotal"><span>UMUMIY KASSA</span><span id="pp-total">0</span></div>
-      <div class="sig-block">
-        <div>Ответственное лицо</div>
-        <div class="sig-line">(Ф.И.О) _____________ (подпись) _____</div>
-        <div style="margin-top:14px;">Супервайзер</div>
-        <div class="sig-line">(Ф.И.О) _____________ (подпись) _____</div>
+      <div class="doc-header">
+        <div><b>Торговая Точка:</b> <span id="pp-spot"></span></div>
+        <div><b>Дата:</b> <span id="pp-date"></span></div>
+      </div>
+
+      <table class="doc-table" id="pp-expense-table" style="display:none;">
+        <thead><tr><th>Расход</th><th>Сумма</th></tr></thead>
+        <tbody id="pp-expense-body"></tbody>
+      </table>
+
+      <table class="doc-table">
+        <thead><tr><th>Купюра:</th><th>Количество</th></tr></thead>
+        <tbody id="pp-banknote-body"></tbody>
+      </table>
+
+      <table class="doc-table">
+        <thead><tr><th colspan="2">Общая Касса</th></tr></thead>
+        <tbody id="pp-paytype-body"></tbody>
+        <tbody>
+          <tr class="doc-spacer"><td colspan="2"></td></tr>
+          <tr><td>Общие Расходы</td><td id="pp-total-expense-cell"></td></tr>
+          <tr><td>Тоза</td><td id="pp-toza-cell"></td></tr>
+        </tbody>
+      </table>
+
+      <div class="doc-sig">
+        <div><b>Ответственное лицо</b></div>
+        <div class="doc-sig-line">(Ф.И.О)______________________________(подпись)____________</div>
+        <div style="margin-top:16px;"><b>Супервайзер</b></div>
+        <div class="doc-sig-line">(Ф.И.О)______________________________(подпись)____________</div>
       </div>
     </div>
 
@@ -352,14 +368,44 @@
     function preparePrint() {
       const spot_id = document.getElementById('spot_id').value;
       const date = document.getElementById('entry_date').value;
-      const { totalExpense, totalToza, totalPay, total } = recalc();
+      const { totalExpense, totalToza } = recalc();
 
-      document.getElementById('pp-spot').textContent = (spotsById[spot_id] || '').toUpperCase();
-      document.getElementById('pp-date').textContent = `KASSA HISOBOTI · ${date}`;
-      document.getElementById('pp-toza').textContent = formatMoney(totalToza);
-      document.getElementById('pp-expense').textContent = formatMoney(totalExpense);
-      document.getElementById('pp-paytypes').textContent = formatMoney(totalPay);
-      document.getElementById('pp-total').textContent = formatMoney(total);
+      document.getElementById('pp-spot').textContent = spotsById[spot_id] || '';
+      document.getElementById('pp-date').textContent = date;
+
+      // Rasxodlar - faqat mavjud bo'lsa jadval ko'rsatiladi
+      const expenseRows = [];
+      document.querySelectorAll('#expense-body tr').forEach((tr) => {
+        const name = tr.querySelector('.exp-name').value.trim();
+        const amount = parseMoneyInput(tr.querySelector('.exp-amount'));
+        if (name && amount > 0) expenseRows.push({ name, amount });
+      });
+      const expenseTable = document.getElementById('pp-expense-table');
+      if (expenseRows.length) {
+        expenseTable.style.display = '';
+        document.getElementById('pp-expense-body').innerHTML = expenseRows.map(
+          (e) => `<tr><td>${e.name}</td><td>${formatMoney(e.amount)}</td></tr>`
+        ).join('');
+      } else {
+        expenseTable.style.display = 'none';
+      }
+
+      // Kupyuralar
+      document.getElementById('pp-banknote-body').innerHTML = BANKNOTES.map((v) => {
+        const el = document.querySelector(`.bn-count[data-value="${v}"]`);
+        const count = el ? (Number(el.value) || 0) : 0;
+        return `<tr><td>${v.toLocaleString('ru-RU')} so'mlik</td><td>${count}</td></tr>`;
+      }).join('');
+
+      // To'lov turlari
+      document.getElementById('pp-paytype-body').innerHTML = PAYTYPES.map((p) => {
+        const el = document.querySelector(`.pt-amount[data-name="${p}"]`);
+        const amount = el ? parseMoneyInput(el) : 0;
+        return `<tr><td>${p}</td><td>${formatMoney(amount)}</td></tr>`;
+      }).join('');
+
+      document.getElementById('pp-total-expense-cell').textContent = formatMoney(totalExpense);
+      document.getElementById('pp-toza-cell').textContent = formatMoney(totalToza);
 
       const preview = document.getElementById('print-preview');
       preview.classList.add('show');
