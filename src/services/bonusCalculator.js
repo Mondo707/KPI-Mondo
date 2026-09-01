@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { getEffectiveCategories } = require('./configService');
+const { getDisabledCategories } = require('./spotCategoryConfig');
 
 const PRODUCT_MAP_PATH = path.join(__dirname, '..', 'data', 'productMap.json');
 
@@ -83,14 +84,21 @@ async function tierBonus(category, quantity) {
 /**
  * Bir kunlik/bitta filial uchun to'liq bonus hisobotini qaytaradi.
  * @param {Array} transactions shu kun + shu filial uchun tranzaksiyalar
- * @param {object} options { cashDiffOk: boolean } - agar false bo'lsa, bonus butunlay 0 qilinadi
+ * @param {object} options { cashDiffOk: boolean, spotId: number } - cashDiffOk=false bo'lsa
+ *   bonus butunlay 0 qilinadi; spotId berilsa, o'sha filial uchun o'chirilgan kategoriyalar
+ *   hisobga olinmaydi (admin panelda sozlanadi).
  */
 async function calculateDailyBonus(transactions, options = {}) {
   const quantities = aggregateQuantities(transactions);
   const breakdown = [];
   let total = 0;
 
+  const disabledCategories = options.spotId
+    ? await getDisabledCategories(options.spotId)
+    : new Set();
+
   for (const [category, qty] of quantities.entries()) {
+    if (disabledCategories.has(category)) continue;
     const bonus = options.cashDiffOk === false ? 0 : await tierBonus(category, qty);
     breakdown.push({ category, quantity: Math.round(qty * 100) / 100, bonus });
     total += bonus;
@@ -114,6 +122,36 @@ function sumCashCard(transactions) {
 }
 
 /**
+ * Poster tranzaksiyalaridan to'lov turlari bo'yicha yig'indini hisoblaydi.
+ * DIQQAT: Poster tranzaksiya obyekti faqat payed_cash/payed_card/payed_cert/
+ * payed_third_party maydonlarini beradi - UZCARD va HUMO kabi aniq karta turlarini
+ * ajratib bermaydi. Shuning uchun "card" - barcha karta to'lovlari yig'indisi.
+ */
+function computePosterPaymentBreakdown(transactions) {
+  let cash = 0, card = 0, cert = 0, thirdParty = 0, bonus = 0;
+  for (const tx of transactions) {
+    cash += Number(tx.payed_cash) || 0;
+    card += Number(tx.payed_card) || 0;
+    cert += Number(tx.payed_cert) || 0;
+    thirdParty += Number(tx.payed_third_party) || 0;
+    bonus += Number(tx.payed_bonus) || 0;
+  }
+  return { cash, card, cert, thirdParty, bonus };
+}
+
+/**
+ * Berilgan Poster client_id'ga tegishli tranzaksiyalarning umumiy summasini hisoblaydi
+ * (masalan "Yandex eats" yoki "Jiz-Biz restaurant" kanali uchun, admin panelda
+ * sozlangan client_id xaritasi orqali).
+ */
+function sumByClientId(transactions, clientId) {
+  if (!clientId) return 0;
+  return transactions
+    .filter((tx) => String(tx.client_id) === String(clientId))
+    .reduce((sum, tx) => sum + (Number(tx.sum) || 0), 0);
+}
+
+/**
  * Xodim kiritgan summa bilan Poster hisobotidagi naqd summasini solishtiradi.
  * @param {number} enteredAmount xodim tomonidan ilovaga kiritilgan bugungi umumiy kassa
  * @param {number} posterCashTotal Poster'dagi 1 kunlik naqd+naqdsiz savdo yig'indisi
@@ -133,4 +171,6 @@ module.exports = {
   sumCashCard,
   checkCashDiff,
   reloadProductMap,
+  computePosterPaymentBreakdown,
+  sumByClientId,
 };

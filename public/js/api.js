@@ -34,8 +34,8 @@ function requireAdmin() {
 }
 
 /**
- * Foydalanuvchi berilgan bo'limga (masalan 'dashboard' yoki 'cash') kirish huquqi
- * yo'q bo'lsa, unga ruxsat etilgan boshqa sahifaga (yoki login'ga) yo'naltiradi.
+ * Foydalanuvchi berilgan bo'limga (masalan 'kpi', 'daily_sales', 'bonus_table', 'cash')
+ * kirish huquqi yo'q bo'lsa, unga ruxsat etilgan boshqa sahifaga (yoki login'ga) yo'naltiradi.
  */
 function requireSection(section) {
   requireAuth();
@@ -43,10 +43,14 @@ function requireSection(section) {
   if (!user) return;
   if (user.role === 'admin') return;
 
-  const allowed = user.allowed_sections || ['dashboard', 'cash'];
+  const allowed = user.allowed_sections || ['kpi', 'daily_sales', 'bonus_table', 'cash'];
   if (!allowed.includes(section)) {
-    if (allowed.includes('dashboard')) {
+    if (allowed.includes('kpi')) {
       window.location.href = '/dashboard.html';
+    } else if (allowed.includes('daily_sales')) {
+      window.location.href = '/daily-sales.html';
+    } else if (allowed.includes('bonus_table')) {
+      window.location.href = '/bonus-table.html';
     } else if (allowed.includes('cash')) {
       window.location.href = '/cash-entry.html';
     } else {

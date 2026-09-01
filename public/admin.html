@@ -34,6 +34,45 @@
     </div>
 
     <div class="section">
+      <h2>Filial bo'yicha kategoriya sozlamalari</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
+        Ba'zi kategoriyalar ma'lum filialga tegishli bo'lmasligi mumkin — shu yerda o'sha filial uchun
+        yashirib (o'chirib) qo'yishingiz mumkin. O'chirilgan kategoriya o'sha filial uchun bonusga umuman
+        hisoblanmaydi.
+      </p>
+      <div class="form-row">
+        <div class="field" style="max-width:280px;">
+          <label for="cat-spot-select">Filial</label>
+          <select id="cat-spot-select"></select>
+        </div>
+      </div>
+      <div id="spot-categories-wrap" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="section">
+      <h2>Poster klient xaritasi (Yandex eats / Jiz-Biz restaurant)</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
+        Poster'da bu kanallar alohida "mijoz" (client) sifatida qayd etiladi. Shu kanalning Poster'dagi
+        client_id raqamini kiriting — shunda kassa solishtirishda aniq hisoblanadi.
+      </p>
+      <div class="form-row">
+        <div class="field" style="max-width:280px;">
+          <label for="cm-spot-select">Filial</label>
+          <select id="cm-spot-select"></select>
+        </div>
+        <div class="field">
+          <label for="cm-yandex">Yandex eats — Poster client_id</label>
+          <input type="text" id="cm-yandex" placeholder="Masalan: 1234">
+        </div>
+        <div class="field">
+          <label for="cm-jizbiz">Jiz-Biz restaurant — Poster client_id</label>
+          <input type="text" id="cm-jizbiz" placeholder="Masalan: 5678">
+        </div>
+        <button class="btn-primary" id="cm-save-btn" style="max-width:140px;">Saqlash</button>
+      </div>
+    </div>
+
+    <div class="section">
       <h2>Yangi foydalanuvchi qo'shish</h2>
       <div class="form-row">
         <div class="field">
@@ -55,10 +94,12 @@
           <label>Ruxsat etilgan filiallar (hech biri belgilanmasa = hammasi)</label>
           <div id="new-spots-checks" class="spot-checks"></div>
         </div>
-        <div class="field" style="flex:1.2;">
+        <div class="field" style="flex:1.4;">
           <label>Ko'ra oladigan bo'limlar</label>
           <div class="spot-checks" style="max-height:none;">
-            <label class="spot-check-item"><input type="checkbox" id="new-section-dashboard" checked> KPI (Ko'rish)</label>
+            <label class="spot-check-item"><input type="checkbox" id="new-section-kpi" checked> KPI</label>
+            <label class="spot-check-item"><input type="checkbox" id="new-section-daily_sales" checked> Kunlik savdo</label>
+            <label class="spot-check-item"><input type="checkbox" id="new-section-bonus_table" checked> Bonus jadvali</label>
             <label class="spot-check-item"><input type="checkbox" id="new-section-cash" checked> Kassa kiritish</label>
           </div>
         </div>
@@ -71,33 +112,64 @@
       <h2>Foydalanuvchilar ro'yxati</h2>
       <table>
         <thead>
-          <tr><th>Login</th><th>Parol</th><th>Rol</th><th>Filiallar</th><th>Bo'limlar</th><th>Holat</th><th>Yaratilgan</th><th>Amallar</th></tr>
+          <tr><th>Login</th><th>Parol</th><th>Rol</th><th>Filiallar</th><th>Bo'limlar</th><th>Holat</th><th>Oxirgi kirish</th><th>Yaratilgan</th><th>Amallar</th></tr>
         </thead>
         <tbody id="users-body"></tbody>
       </table>
+    </div>
+
+    <div class="section">
+      <h2>Kassa yozuvlari (tahrirlash / o'chirish)</h2>
+      <div class="form-row">
+        <div class="field" style="max-width:280px;">
+          <label for="ce-spot-select">Filial</label>
+          <select id="ce-spot-select"><option value="">Barchasi</option></select>
+        </div>
+        <div class="field">
+          <label for="ce-from">Sanadan</label>
+          <input type="date" id="ce-from">
+        </div>
+        <div class="field">
+          <label for="ce-to">Sanagacha</label>
+          <input type="date" id="ce-to">
+        </div>
+        <button class="btn-primary" id="ce-load-btn" style="max-width:140px;">Yuklash</button>
+      </div>
+      <table style="margin-top:14px;">
+        <thead>
+          <tr><th>Sana</th><th>Filial</th><th>Тоза</th><th>Rasxod</th><th>To'lov turlari</th><th>Umumiy kassa</th><th>Amallar</th></tr>
+        </thead>
+        <tbody id="cash-entries-body"></tbody>
+      </table>
+      <div class="empty-state" id="cash-entries-empty" style="display:none;">Yozuv topilmadi</div>
     </div>
   </div>
 
   <script src="/js/api.js"></script>
   <script src="/js/topbar.js"></script>
+  <script src="/js/categoryOrder.js"></script>
   <script>
     requireAdmin();
     renderTopbar('admin');
 
     let spotsList = [];
-    let currentUserId = null;
 
     async function loadSpotsForForm() {
       try {
         const data = await apiFetch('/spots');
         spotsList = data.spots;
-        const wrap = document.getElementById('new-spots-checks');
-        wrap.innerHTML = spotsList.map((s) => `
+
+        document.getElementById('new-spots-checks').innerHTML = spotsList.map((s) => `
           <label class="spot-check-item">
             <input type="checkbox" value="${s.spot_id}" class="new-spot-check">
             ${s.name}
           </label>
         `).join('');
+
+        const optionsHtml = spotsList.map((s) => `<option value="${s.spot_id}">${s.name}</option>`).join('');
+        document.getElementById('cat-spot-select').innerHTML = optionsHtml;
+        document.getElementById('cm-spot-select').innerHTML = optionsHtml;
+        document.getElementById('ce-spot-select').innerHTML = '<option value="">Barchasi</option>' + optionsHtml;
       } catch (e) {
         showToast('Filiallarni yuklab bo\'lmadi: ' + e.message, true);
       }
@@ -108,7 +180,9 @@
       try {
         const data = await apiFetch('/admin/bonus-config');
         wrap.innerHTML = '';
-        Object.entries(data.categories).forEach(([category, cfg]) => {
+        const cats = sortByCategoryOrder(Object.keys(data.categories));
+        cats.forEach((category) => {
+          const cfg = data.categories[category];
           const row = document.createElement('div');
           row.className = 'category-row';
           row.innerHTML = `
@@ -146,6 +220,85 @@
       }
     }
 
+    async function loadSpotCategories() {
+      const spotId = document.getElementById('cat-spot-select').value;
+      if (!spotId) return;
+      const wrap = document.getElementById('spot-categories-wrap');
+      wrap.innerHTML = 'Yuklanmoqda...';
+      try {
+        const data = await apiFetch(`/admin/spot-categories?spot_id=${spotId}`);
+        const ordered = sortByCategoryOrder(data.categories.map((c) => c.category))
+          .map((cat) => data.categories.find((c) => c.category === cat));
+
+        wrap.innerHTML = `<div class="spot-checks" style="max-height:none; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
+          ${ordered.map((c) => `
+            <label class="spot-check-item">
+              <input type="checkbox" class="cat-toggle" data-category="${c.category}" ${c.enabled ? 'checked' : ''}>
+              ${c.category}
+            </label>
+          `).join('')}
+        </div>`;
+
+        wrap.querySelectorAll('.cat-toggle').forEach((cb) => {
+          cb.addEventListener('change', async () => {
+            try {
+              await apiFetch('/admin/spot-categories', {
+                method: 'PUT',
+                body: JSON.stringify({ spot_id: Number(spotId), category: cb.dataset.category, enabled: cb.checked }),
+              });
+              showToast(`"${cb.dataset.category}" ${cb.checked ? 'yoqildi' : 'o\'chirildi'}`);
+            } catch (e) {
+              showToast('Xato: ' + e.message, true);
+              cb.checked = !cb.checked;
+            }
+          });
+        });
+      } catch (e) {
+        wrap.innerHTML = '<div class="error-msg">Yuklashda xato: ' + e.message + '</div>';
+      }
+    }
+
+    async function loadClientMapping() {
+      const spotId = document.getElementById('cm-spot-select').value;
+      if (!spotId) return;
+      try {
+        const data = await apiFetch(`/admin/client-mapping?spot_id=${spotId}`);
+        document.getElementById('cm-yandex').value = data.mapping.yandex_eats || '';
+        document.getElementById('cm-jizbiz').value = data.mapping.jizbiz || '';
+      } catch (e) {
+        showToast('Yuklashda xato: ' + e.message, true);
+      }
+    }
+
+    document.getElementById('cm-save-btn').addEventListener('click', async () => {
+      const spotId = document.getElementById('cm-spot-select').value;
+      const yandex = document.getElementById('cm-yandex').value.trim();
+      const jizbiz = document.getElementById('cm-jizbiz').value.trim();
+      if (!spotId) { showToast('Filialni tanlang', true); return; }
+
+      try {
+        if (yandex) {
+          await apiFetch('/admin/client-mapping', {
+            method: 'PUT',
+            body: JSON.stringify({ spot_id: Number(spotId), channel_key: 'yandex_eats', poster_client_id: yandex }),
+          });
+        }
+        if (jizbiz) {
+          await apiFetch('/admin/client-mapping', {
+            method: 'PUT',
+            body: JSON.stringify({ spot_id: Number(spotId), channel_key: 'jizbiz', poster_client_id: jizbiz }),
+          });
+        }
+        showToast('Klient xaritasi saqlandi');
+      } catch (e) {
+        showToast('Xato: ' + e.message, true);
+      }
+    });
+
+    function sectionLabel(s) {
+      return { kpi: 'KPI', daily_sales: 'Kunlik savdo', bonus_table: 'Bonus jadvali', cash: 'Kassa' }[s] || s;
+    }
+
     async function loadUsers() {
       const tbody = document.getElementById('users-body');
       try {
@@ -159,9 +312,10 @@
               }).join(', ')
             : 'Barchasi';
 
-          const sectionNames = (u.allowed_sections || []).map((s) =>
-            s === 'dashboard' ? 'KPI' : s === 'cash' ? 'Kassa' : s
-          ).join(', ') || '—';
+          const sectionNames = (u.allowed_sections || []).map(sectionLabel).join(', ') || '—';
+          const lastLogin = u.last_login_at
+            ? new Date(u.last_login_at).toLocaleString('ru-RU')
+            : '<span style="color:var(--text-dim);">Hali kirmagan</span>';
 
           const tr = document.createElement('tr');
           tr.dataset.userId = u.id;
@@ -176,7 +330,8 @@
             <td>${u.is_active
               ? '<span class="badge ok">Faol</span>'
               : '<span class="badge bad">Faolsiz</span>'}</td>
-            <td>${u.created_at}</td>
+            <td>${lastLogin}</td>
+            <td>${new Date(u.created_at).toLocaleDateString('ru-RU')}</td>
             <td>
               <button class="action-btn" data-act="edit-spots" data-id="${u.id}">Filiallar</button>
               <button class="action-btn" data-act="edit-sections" data-id="${u.id}">Bo'limlar</button>
@@ -276,18 +431,19 @@
       const user = data.users.find((u) => String(u.id) === String(userId));
       if (!user) return;
 
+      const ALL_SECTIONS = ['kpi', 'daily_sales', 'bonus_table', 'cash'];
+
       const editRow = document.createElement('tr');
       editRow.className = 'sections-edit-row';
       const td = document.createElement('td');
-      td.colSpan = 8;
+      td.colSpan = 9;
       td.innerHTML = `
         <div class="spots-edit-panel">
-          <label class="spot-check-item" style="margin-bottom:6px;">
-            <input type="checkbox" id="sec-dashboard-${userId}" ${user.allowed_sections.includes('dashboard') ? 'checked' : ''}> KPI (Ko'rish)
-          </label>
-          <label class="spot-check-item">
-            <input type="checkbox" id="sec-cash-${userId}" ${user.allowed_sections.includes('cash') ? 'checked' : ''}> Kassa kiritish
-          </label>
+          ${ALL_SECTIONS.map((s) => `
+            <label class="spot-check-item" style="margin-bottom:6px;">
+              <input type="checkbox" id="sec-${s}-${userId}" ${user.allowed_sections.includes(s) ? 'checked' : ''}> ${sectionLabel(s)}
+            </label>
+          `).join('')}
           <button class="btn-primary" style="max-width:140px; margin-top:10px;" id="save-sections-${userId}">Saqlash</button>
         </div>
       `;
@@ -295,9 +451,7 @@
       row.after(editRow);
 
       document.getElementById(`save-sections-${userId}`).addEventListener('click', async () => {
-        const sections = [];
-        if (document.getElementById(`sec-dashboard-${userId}`).checked) sections.push('dashboard');
-        if (document.getElementById(`sec-cash-${userId}`).checked) sections.push('cash');
+        const sections = ALL_SECTIONS.filter((s) => document.getElementById(`sec-${s}-${userId}`).checked);
         try {
           await apiFetch(`/admin/users/${userId}/sections`, {
             method: 'PUT',
@@ -319,7 +473,6 @@
         existing.remove();
         return;
       }
-      // Boshqa ochiq bo'lgan tahrirlash panellarini yopib qo'yamiz
       document.querySelectorAll('.spots-edit-row, .sections-edit-row').forEach((el) => el.remove());
 
       const data = await apiFetch('/admin/users');
@@ -329,7 +482,7 @@
       const editRow = document.createElement('tr');
       editRow.className = 'spots-edit-row';
       const td = document.createElement('td');
-      td.colSpan = 8;
+      td.colSpan = 9;
       td.innerHTML = `
         <div class="spots-edit-panel">
           <div class="spot-checks" id="edit-spots-${userId}">
@@ -369,9 +522,9 @@
       const password = document.getElementById('new-password').value;
       const role = document.getElementById('new-role').value;
       const selectedSpots = Array.from(document.querySelectorAll('.new-spot-check:checked')).map((c) => Number(c.value));
-      const sections = [];
-      if (document.getElementById('new-section-dashboard').checked) sections.push('dashboard');
-      if (document.getElementById('new-section-cash').checked) sections.push('cash');
+      const sections = ['kpi', 'daily_sales', 'bonus_table', 'cash'].filter(
+        (s) => document.getElementById(`new-section-${s}`).checked
+      );
 
       if (!login || !password) {
         showToast('Login va parol kiritilishi shart', true);
@@ -386,7 +539,7 @@
         document.getElementById('new-user-result').innerHTML = `
           <div class="summary-card total" style="max-width:320px;">
             <div class="label">Yangi foydalanuvchi yaratildi</div>
-            <div class="value" style="font-size:16px;">${login} / <code style="color:var(--warn);">${password}</code></div>
+            <div class="value" style="font-size:16px;">${login} / <code style="color:var(--accent);">${password}</code></div>
           </div>
         `;
         showToast('Foydalanuvchi qo\'shildi');
@@ -430,16 +583,117 @@
       }
     });
 
+    async function loadCashEntries() {
+      const spot_id = document.getElementById('ce-spot-select').value;
+      const date_from = document.getElementById('ce-from').value;
+      const date_to = document.getElementById('ce-to').value;
+
+      const params = new URLSearchParams();
+      if (spot_id) params.set('spot_id', spot_id);
+      if (date_from) params.set('date_from', date_from);
+      if (date_to) params.set('date_to', date_to);
+
+      try {
+        const data = await apiFetch('/admin/cash-entries?' + params.toString());
+        const tbody = document.getElementById('cash-entries-body');
+        const emptyEl = document.getElementById('cash-entries-empty');
+        tbody.innerHTML = '';
+
+        if (!data.entries.length) {
+          emptyEl.style.display = 'block';
+          return;
+        }
+        emptyEl.style.display = 'none';
+
+        data.entries.forEach((e) => {
+          const spotName = (spotsList.find((s) => Number(s.spot_id) === Number(e.spot_id)) || {}).name || ('#' + e.spot_id);
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${e.date}</td>
+            <td>${spotName}</td>
+            <td>${formatMoney(e.toza)}</td>
+            <td>${formatMoney(e.total_expense)}</td>
+            <td>${formatMoney(e.total_paytypes)}</td>
+            <td><b>${formatMoney(e.total_amount)}</b></td>
+            <td>
+              <button class="action-btn" data-act="ce-edit" data-id="${e.id}">Tahrirlash</button>
+              <button class="action-btn danger" data-act="ce-delete" data-id="${e.id}">O'chirish</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        tbody.querySelectorAll('[data-act="ce-delete"]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Bu kassa yozuvini o\'chirasizmi?')) return;
+            try {
+              await apiFetch(`/admin/cash-entries/${btn.dataset.id}`, { method: 'DELETE' });
+              showToast('Yozuv o\'chirildi');
+              await loadCashEntries();
+            } catch (err) {
+              showToast('Xato: ' + err.message, true);
+            }
+          });
+        });
+
+        tbody.querySelectorAll('[data-act="ce-edit"]').forEach((btn) => {
+          btn.addEventListener('click', () => editCashEntry(btn.dataset.id, data.entries));
+        });
+      } catch (e) {
+        showToast('Kassa yozuvlarini yuklashda xato: ' + e.message, true);
+      }
+    }
+
+    async function editCashEntry(id, entries) {
+      const entry = entries.find((e) => String(e.id) === String(id));
+      if (!entry) return;
+
+      const newToza = prompt('Тоза (naqd) summasini kiriting:', entry.toza);
+      if (newToza === null) return;
+      const newExpense = prompt('Umumiy rasxod summasini kiriting:', entry.total_expense);
+      if (newExpense === null) return;
+
+      // Oddiy tahrirlash: banknotalar/rasxodlarni qayta hisoblamasdan, faqat umumiy
+      // qiymatlarni yagona "qo'lda kiritilgan" band sifatida saqlaymiz.
+      const banknotes = { [Number(newToza) || 0]: 1 };
+      const expenses = [{ name: 'Admin tomonidan tahrirlangan', amount: Number(newExpense) || 0 }];
+
+      try {
+        await apiFetch(`/admin/cash-entries/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ expenses, banknotes, payment_types: entry.payment_types }),
+        });
+        showToast('Yozuv yangilandi');
+        await loadCashEntries();
+      } catch (e) {
+        showToast('Xato: ' + e.message, true);
+      }
+    }
+
+    document.getElementById('cat-spot-select').addEventListener('change', loadSpotCategories);
+    document.getElementById('cm-spot-select').addEventListener('change', loadClientMapping);
+    document.getElementById('ce-load-btn').addEventListener('click', loadCashEntries);
+
     (async function init() {
       const today = todayStr();
       const monthAgo = new Date();
       monthAgo.setDate(monthAgo.getDate() - 30);
-      document.getElementById('sync-from').value = monthAgo.toISOString().slice(0, 10);
+      const monthAgoStr = monthAgo.toISOString().slice(0, 10);
+
+      document.getElementById('sync-from').value = monthAgoStr;
       document.getElementById('sync-to').value = today;
+      document.getElementById('ce-from').value = monthAgoStr;
+      document.getElementById('ce-to').value = today;
 
       await loadSpotsForForm();
       await loadBonusConfig();
       await loadUsers();
+
+      if (spotsList.length) {
+        await loadSpotCategories();
+        await loadClientMapping();
+      }
+      await loadCashEntries();
     })();
   </script>
 </body>

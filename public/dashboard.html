@@ -79,8 +79,8 @@
   <script src="/js/topbar.js"></script>
   <script src="/js/categoryOrder.js"></script>
   <script>
-    requireSection('dashboard');
-    renderTopbar('dashboard');
+    requireSection('kpi');
+    renderTopbar('kpi');
 
     let spotsById = {};
     let tiersConfig = {};
@@ -283,19 +283,18 @@
 
     // Chek: bitta sana tanlanganda ko'rsatiladi. Agar bitta filial tanlangan bo'lsa -
     // shu filial bo'yicha, agar "Barchasi" tanlangan bo'lsa - barcha filiallar
-    // yig'indisi bo'yicha ko'rsatadi.
+    // Chek: istalgan davr (bir kun yoki bir necha kun) uchun ko'rsatiladi. Agar bitta
+    // filial tanlangan bo'lsa - shu filial bo'yicha, "Barchasi" bo'lsa - barcha
+    // filiallar yig'indisi bo'yicha.
     function renderReceipt(rows, date_from, date_to, spot_id) {
       const wrap = document.getElementById('receipt-wrap');
-      if (date_from !== date_to) {
-        wrap.style.display = 'none';
-        return;
-      }
       wrap.style.display = 'flex';
 
       document.getElementById('receipt-spot-name').textContent = spot_id
         ? (spotsById[spot_id] || ('#' + spot_id))
         : 'Barcha filiallar';
-      document.getElementById('receipt-date').textContent = date_from;
+      document.getElementById('receipt-date').textContent =
+        date_from === date_to ? date_from : `${date_from} — ${date_to}`;
 
       // Kategoriya bo'yicha yig'indi (bitta filial bo'lsa ham, "barchasi" bo'lsa ham
       // bir xil ishlaydi - chunki bir filial tanlanganda faqat 1 ta qator yig'iladi).
@@ -316,7 +315,7 @@
 
       const linesEl = document.getElementById('receipt-lines');
       if (!orderedCats.length) {
-        linesEl.innerHTML = '<div class="r-empty">Bu kunda sotuv qayd etilmagan</div>';
+        linesEl.innerHTML = '<div class="r-empty">Bu davrda sotuv qayd etilmagan</div>';
       } else {
         linesEl.innerHTML = orderedCats.map((cat) => {
           const acc = byCategory.get(cat);

@@ -23,8 +23,9 @@ async function init() {
       password_plain TEXT,
       role TEXT NOT NULL DEFAULT 'viewer',
       allowed_spots TEXT NOT NULL DEFAULT '[]',
-      allowed_sections TEXT NOT NULL DEFAULT '["dashboard","cash"]',
+      allowed_sections TEXT NOT NULL DEFAULT '["kpi","daily_sales","bonus_table","cash"]',
       is_active INTEGER NOT NULL DEFAULT 1,
+      last_login_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT now()
     );
 
@@ -44,7 +45,7 @@ async function init() {
       id SERIAL PRIMARY KEY,
       date TEXT NOT NULL,
       spot_id INTEGER NOT NULL,
-      entered_amount INTEGER NOT NULL,
+      entered_amount INTEGER NOT NULL DEFAULT 0,
       poster_total INTEGER NOT NULL DEFAULT 0,
       diff_percent REAL NOT NULL DEFAULT 0,
       ok INTEGER NOT NULL DEFAULT 1,
@@ -60,13 +61,40 @@ async function init() {
       updated_at TIMESTAMP DEFAULT now(),
       PRIMARY KEY (category, tier_index)
     );
+
+    CREATE TABLE IF NOT EXISTS spot_category_config (
+      spot_id INTEGER NOT NULL,
+      category TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at TIMESTAMP DEFAULT now(),
+      PRIMARY KEY (spot_id, category)
+    );
+
+    CREATE TABLE IF NOT EXISTS poster_client_mapping (
+      spot_id INTEGER NOT NULL,
+      channel_key TEXT NOT NULL,
+      poster_client_id TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT now(),
+      PRIMARY KEY (spot_id, channel_key)
+    );
   `);
 
   // Eski bazalarda yangi ustunlar bo'lmasligi mumkin - xavfsiz migratsiya
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_plain TEXT;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_sections TEXT NOT NULL DEFAULT '["dashboard","cash"]';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_sections TEXT NOT NULL DEFAULT '["kpi","daily_sales","bonus_table","cash"]';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
+
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS expenses TEXT NOT NULL DEFAULT '[]';
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS banknotes TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS payment_types TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS toza INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS total_expense INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS total_paytypes INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS total_amount INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS poster_snapshot TEXT;
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS poster_synced_at TIMESTAMP;
   `);
 }
 

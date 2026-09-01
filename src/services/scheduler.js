@@ -74,7 +74,7 @@ async function syncDate(date) {
   }
 
   for (const [spotId, txs] of bySpot.entries()) {
-    const { breakdown } = await calculateDailyBonus(txs);
+    const { breakdown } = await calculateDailyBonus(txs, { spotId });
     await upsertDailyBonus(date, spotId, breakdown);
   }
 

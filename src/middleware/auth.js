@@ -42,7 +42,7 @@ function requireSection(section) {
     if (!req.user) return res.status(401).json({ error: 'Token topilmadi' });
     if (req.user.role === 'admin') return next();
 
-    const allowed = req.user.allowed_sections || ['dashboard', 'cash'];
+    const allowed = req.user.allowed_sections || ['kpi', 'daily_sales', 'bonus_table', 'cash'];
     if (!allowed.includes(section)) {
       return res.status(403).json({ error: 'Bu bo\'limga ruxsatingiz yo\'q' });
     }
@@ -50,4 +50,22 @@ function requireSection(section) {
   };
 }
 
-module.exports = { authRequired, adminOnly, requireSection, JWT_SECRET };
+/**
+ * Foydalanuvchi berilgan bo'limlardan KAMIDA BITTASIGA kirish huquqiga ega
+ * bo'lishini talab qiladi (masalan /api/bonus ham KPI, ham Kunlik savdo
+ * sahifalarida ishlatiladi).
+ */
+function requireAnySection(...sections) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: 'Token topilmadi' });
+    if (req.user.role === 'admin') return next();
+
+    const allowed = req.user.allowed_sections || ['kpi', 'daily_sales', 'bonus_table', 'cash'];
+    if (!sections.some((s) => allowed.includes(s))) {
+      return res.status(403).json({ error: 'Bu bo\'limga ruxsatingiz yo\'q' });
+    }
+    next();
+  };
+}
+
+module.exports = { authRequired, adminOnly, requireSection, requireAnySection, JWT_SECRET };

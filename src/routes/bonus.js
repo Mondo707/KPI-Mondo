@@ -1,20 +1,19 @@
 const express = require('express');
 const { pool } = require('../db/db');
-const { authRequired, requireSection } = require('../middleware/auth');
+const { authRequired, requireAnySection } = require('../middleware/auth');
 const { getEffectiveCategories } = require('../services/configService');
 
 const router = express.Router();
 
-// GET /api/bonus/tiers - barcha kategoriyalarning pog'ona jadvalini qaytaradi
-// (admin bo'lmagan foydalanuvchilar uchun ham - "keyingi pog'onagacha qoldi" ko'rsatish uchun)
-router.get('/tiers', authRequired, requireSection('dashboard'), async (req, res) => {
+// GET /api/bonus/tiers - barcha kategoriyalarning pog'ona jadvalini qaytaradi.
+// Har qanday login qilgan foydalanuvchi ko'ra oladi (maxfiy emas, xodimlar uchun
+// ham "Bonus jadvali" sahifasida ko'rsatiladi).
+router.get('/tiers', authRequired, async (req, res) => {
   res.json({ categories: await getEffectiveCategories() });
 });
 
 // GET /api/bonus/journal?spot_id=6&date_from=2026-08-01&date_to=2026-08-23&category=Лимонады
-// Har bir kun uchun jami bonusni (kategoriyalar yig'indisi, yoki bitta kategoriya
-// tanlangan bo'lsa faqat o'sha kategoriya) va kunlik holatni qaytaradi.
-router.get('/journal', authRequired, requireSection('dashboard'), async (req, res) => {
+router.get('/journal', authRequired, requireAnySection('kpi'), async (req, res) => {
   const { spot_id, date_from, date_to, category } = req.query;
   if (!spot_id || !date_from || !date_to) {
     return res.status(400).json({ error: 'spot_id, date_from, date_to kerak' });
@@ -56,7 +55,8 @@ router.get('/journal', authRequired, requireSection('dashboard'), async (req, re
 });
 
 // GET /api/bonus?date_from=2026-08-01&date_to=2026-08-23&spot_id=6&category=Лимонады
-router.get('/', authRequired, requireSection('dashboard'), async (req, res) => {
+// KPI sahifasi va Kunlik savdo sahifasi ikkalasi ham shu endpointdan foydalanadi.
+router.get('/', authRequired, requireAnySection('kpi', 'daily_sales'), async (req, res) => {
   const { date_from, date_to, spot_id, category } = req.query;
 
   if (!date_from || !date_to) {
@@ -72,7 +72,6 @@ router.get('/', authRequired, requireSection('dashboard'), async (req, res) => {
   conditions.push(`date <= $${i++}`);
   params.push(date_to);
 
-  // Foydalanuvchining ruxsat etilgan filiallari (bo'sh = hammasi)
   const allowedSpots = req.user.allowed_spots || [];
   if (allowedSpots.length > 0) {
     const placeholders = allowedSpots.map(() => `$${i++}`).join(',');

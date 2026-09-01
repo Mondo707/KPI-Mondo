@@ -24,8 +24,10 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ error: 'Bu foydalanuvchi faolsizlantirilgan. Administratorga murojaat qiling.' });
     }
 
+    await pool.query('UPDATE users SET last_login_at = now() WHERE id = $1', [user.id]);
+
     const allowedSpots = JSON.parse(user.allowed_spots || '[]');
-    const allowedSections = JSON.parse(user.allowed_sections || '["dashboard","cash"]');
+    const allowedSections = JSON.parse(user.allowed_sections || '["kpi","daily_sales","bonus_table","cash"]');
     const token = jwt.sign(
       { id: user.id, login: user.login, role: user.role, allowed_spots: allowedSpots, allowed_sections: allowedSections },
       JWT_SECRET,
