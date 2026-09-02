@@ -116,9 +116,12 @@ async function buildPosterSnapshot(transactions, spotId) {
 /**
  * Berilgan kassa yozuvi uchun Poster bilan solishtirish natijasini hisoblaydi
  * (yoki keshdan qaytaradi, agar avval hisoblangan bo'lsa).
+ * @param {object} entry cash_entries qatori
+ * @param {object} options { forceUnlock: boolean } - true bo'lsa (masalan admin so'ragan
+ *   bo'lsa), 6 soatlik qulf hisobga olinmaydi.
  */
-async function getComparison(entry) {
-  if (isLocked(entry)) {
+async function getComparison(entry, options = {}) {
+  if (!options.forceUnlock && isLocked(entry)) {
     return { locked: true, unlock_at: unlockTime(entry) };
   }
 

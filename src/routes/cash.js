@@ -119,11 +119,54 @@ router.get('/compare', authRequired, requireSection('cash'), async (req, res) =>
   if (!row) return res.status(404).json({ error: 'Bu kun uchun kassa yozuvi topilmadi' });
 
   try {
-    const comparison = await getComparison(row);
+    const comparison = await getComparison(row, { forceUnlock: req.user.role === 'admin' });
     res.json(comparison);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// GET /api/cash/diff-journal?spot_id=&date_from=&date_to= - har bir kun uchun
+// Poster bilan solishtirilgan umumiy farq tarixi
+router.get('/diff-journal', authRequired, requireSection('cash'), async (req, res) => {
+  const { spot_id, date_from, date_to } = req.query;
+  if (!spot_id || !date_from || !date_to) {
+    return res.status(400).json({ error: 'spot_id, date_from, date_to kerak' });
+  }
+
+  const allowedSpots = req.user.allowed_spots || [];
+  if (allowedSpots.length > 0 && !allowedSpots.includes(Number(spot_id))) {
+    return res.status(403).json({ error: 'Bu filialga ruxsatingiz yo\'q' });
+  }
+
+  const result = await pool.query(
+    `SELECT * FROM cash_entries WHERE spot_id = $1 AND date >= $2 AND date <= $3 ORDER BY date DESC`,
+    [Number(spot_id), date_from, date_to]
+  );
+
+  const forceUnlock = req.user.role === 'admin';
+  const entries = [];
+  for (const row of result.rows) {
+    try {
+      const comparison = await getComparison(row, { forceUnlock });
+      if (comparison.locked) {
+        entries.push({ date: row.date, locked: true, unlock_at: comparison.unlock_at });
+      } else {
+        const totalRow = comparison.rows.find((r) => r.level === 'total');
+        entries.push({
+          date: row.date,
+          locked: false,
+          fakt: totalRow.fakt,
+          poster: totalRow.poster,
+          diff: totalRow.fakt - totalRow.poster,
+        });
+      }
+    } catch (e) {
+      entries.push({ date: row.date, locked: true, error: e.message });
+    }
+  }
+
+  res.json({ entries });
 });
 
 // GET /api/cash/journal?spot_id=&date_from=&date_to=
