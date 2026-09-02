@@ -54,12 +54,15 @@
       <h2>Poster klient xaritasi (Yandex eats / Jiz-Biz restaurant)</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
         Poster'da bu kanallar alohida "mijoz" (client) sifatida qayd etiladi. Shu kanalning Poster'dagi
-        client_id raqamini kiriting — shunda kassa solishtirishda aniq hisoblanadi.
+        client_id raqamini kiriting — shunda kassa solishtirishda aniq hisoblanadi. Odatda bu ID'lar
+        butun akkauntda bir xil bo'ladi, shuning uchun "Barchasi (global)" ni tanlab bir marta kiriting.
       </p>
       <div class="form-row">
         <div class="field" style="max-width:280px;">
           <label for="cm-spot-select">Filial</label>
-          <select id="cm-spot-select"></select>
+          <select id="cm-spot-select">
+            <option value="0" selected>Barchasi (global - tavsiya etiladi)</option>
+          </select>
         </div>
         <div class="field">
           <label for="cm-yandex">Yandex eats — Poster client_id</label>
@@ -198,7 +201,8 @@
 
         const optionsHtml = spotsList.map((s) => `<option value="${s.spot_id}">${s.name}</option>`).join('');
         document.getElementById('cat-spot-select').innerHTML = optionsHtml;
-        document.getElementById('cm-spot-select').innerHTML = optionsHtml;
+        document.getElementById('cm-spot-select').innerHTML =
+          '<option value="0">Barchasi (global - tavsiya etiladi)</option>' + optionsHtml;
         document.getElementById('ce-spot-select').innerHTML = '<option value="">Barchasi</option>' + optionsHtml;
         document.getElementById('pm-spot-select').innerHTML = '<option value="">Barchasi</option>' + optionsHtml;
       } catch (e) {
