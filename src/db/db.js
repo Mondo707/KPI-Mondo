@@ -84,6 +84,12 @@ async function init() {
       label TEXT,
       updated_at TIMESTAMP DEFAULT now()
     );
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT now()
+    );
   `);
 
   // Eski bazalarda yangi ustunlar bo'lmasligi mumkin - xavfsiz migratsiya

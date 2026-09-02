@@ -6,6 +6,7 @@ const { getEffectiveCategories, setTierBonus } = require('../services/configServ
 const { syncDate } = require('../services/scheduler');
 const { getSpotCategoryStatus, setCategoryEnabled } = require('../services/spotCategoryConfig');
 const { getMappingDetailed, setMapping, discoverPaymentMethods, KNOWN_CHANNELS } = require('../services/posterPaymentMethods');
+const { getSettingNumber, setSetting } = require('../services/appSettings');
 
 const router = express.Router();
 
@@ -343,6 +344,23 @@ router.get('/payment-methods/discover', async (req, res) => {
     // Poster'ga ulanib bo'lmasa ham, sahifa buzilmasin - bo'sh natija bilan xatoni bildiramiz
     res.json({ found: [], warning: `Poster'dan ma'lumot olib bo'lmadi: ${e.message}` });
   }
+});
+
+// GET /api/admin/cash-diff-limit - kassa farqi chegarasini (bonus qoidasi) olish
+router.get('/cash-diff-limit', async (req, res) => {
+  const value = await getSettingNumber('cash_diff_limit_percent', Number(process.env.CASH_DIFF_LIMIT_PERCENT || 0.3));
+  res.json({ cash_diff_limit_percent: value });
+});
+
+// PUT /api/admin/cash-diff-limit - kassa farqi chegarasini o'zgartirish
+// body: { cash_diff_limit_percent: 0.5 }
+router.put('/cash-diff-limit', async (req, res) => {
+  const { cash_diff_limit_percent } = req.body || {};
+  if (cash_diff_limit_percent === undefined || Number(cash_diff_limit_percent) < 0) {
+    return res.status(400).json({ error: 'cash_diff_limit_percent (0 yoki musbat son) kerak' });
+  }
+  await setSetting('cash_diff_limit_percent', Number(cash_diff_limit_percent));
+  res.json({ ok: true });
 });
 
 module.exports = router;

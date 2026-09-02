@@ -1,28 +1,36 @@
 // Kassa kiritilgan "Fakt" ma'lumotlarni Poster'dagi haqiqiy to'lovlar bilan solishtiradi.
 //
-// MUHIM: bu servis ma'lumotlarni oddiy "transactions.getTransactions" o'rniga
-// "dash.getTransactions" orqali oladi - chunki faqat shu metod payment_method_id
-// va client_id maydonlarini beradi (buni diagnostika orqali tasdiqladik).
-// Vaqtni solishtirish uchun tx.date_close (raqamli epoch millisekund) ishlatiladi -
-// bu ikkala Poster metodi orasidagi vaqt zonasi farqidan qochish uchun eng ishonchli usul.
+// MUHIM texnik eslatmalar:
+//  - Ma'lumotlar "dash.getTransactions" orqali olinadi (faqat shu metod
+//    payment_method_id va client_id'ni beradi - buni diagnostika tasdiqladi).
+//  - dash.getTransactions summalarni TIYIN'da beradi (transactions.getTransactions
+//    esa so'mda) - shuning uchun barcha summalar 100 ga bo'linadi.
+//  - Vaqtni solishtirish uchun tx.date_close (raqamli epoch millisekund)
+//    ishlatiladi - bu Poster metodlari orasidagi vaqt zonasi farqidan qochish
+//    uchun eng ishonchli usul.
 //
 // Tuzilma:
 //   Umumiy kassa
-//     Наличные оплаты   = Тоза + Umumiy rasxod + Инкассация (Poster tomonida: payed_cash)
-//     Безналичные оплаты = pastdagi barcha kanallar yig'indisi
-//       - UZCARD, HUMO, Uz Qr Kod, Click, Payme, Uzum, Alif, Paynet
-//         (Poster tomonida: admin panelda sozlangan payment_method_id xaritasi orqali)
-//       - Карточки - xaritada yo'q/aniqlanmagan karta to'lovlari (zaxira band)
-//       - Yandex eats, Jiz-Biz restaurant - Poster'dagi client_id bo'yicha (aniq)
+//     Наличные оплаты    = Тоза + Umumiy rasxod + Инкассация (Poster: payed_cash)
+//     Безналичные оплаты = UZCARD+HUMO+Uz Qr Kod+Карточки+Click+Payme+Uzum+Alif+Paynet
+//     Сертификат         = Yandex eats + Jiz-Biz restaurant (Poster'da bu ikkalasi
+//                           "Сертификат" to'lov turi bilan yopiladi, shuning uchun
+//                           Безналичныеga QO'SHILMAYDI - alohida ko'rsatiladi)
 
 const poster = require('./posterClient');
 const { pool } = require('../db/db');
 const { getBusinessDayWindowEpoch } = require('./businessDay');
 const { getMapping } = require('./posterPaymentMethods');
+const { getSettingNumber } = require('./appSettings');
 
 const RECONCILE_DELAY_HOURS = Number(process.env.CASH_RECONCILE_DELAY_HOURS || 6);
+const CASH_DIFF_LIMIT_SETTING_KEY = 'cash_diff_limit_percent';
+const DEFAULT_CASH_DIFF_LIMIT_PERCENT = Number(process.env.CASH_DIFF_LIMIT_PERCENT || 0.3);
 
-const CHANNEL_ORDER = ['uzcard', 'humo', 'uz_qr', 'karta_other', 'click', 'payme', 'uzum', 'alif', 'paynet', 'yandex_eats', 'jizbiz'];
+// dash.getTransactions summalari tiyin'da keladi - so'mga o'tkazish uchun bo'linadi
+const AMOUNT_DIVISOR = 100;
+
+const NONCASH_CHANNEL_ORDER = ['uzcard', 'humo', 'uz_qr', 'karta_other', 'click', 'payme', 'uzum', 'alif', 'paynet'];
 
 /**
  * dash.getTransactions orqali berilgan "ish kuni" uchun barcha tranzaksiyalarni oladi
@@ -31,10 +39,9 @@ const CHANNEL_ORDER = ['uzcard', 'humo', 'uz_qr', 'karta_other', 'click', 'payme
 async function fetchTransactionsForBusinessDay(dateStr, spotId) {
   const { startMs, endMs } = getBusinessDayWindowEpoch(dateStr);
 
-  // Ikki kalendar kunini so'raymiz (chunki ish kuni kechayarim orqali o'tishi mumkin)
-  const d1 = dateStr;
   const [y, m, d] = dateStr.split('-').map(Number);
   const nextDt = new Date(Date.UTC(y, m - 1, d + 1));
+  const d1 = dateStr;
   const d2 = `${nextDt.getUTCFullYear()}-${String(nextDt.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDt.getUTCDate()).padStart(2, '0')}`;
 
   let allTx = [];
@@ -83,31 +90,32 @@ async function getClientMapping(spotId) {
 }
 
 /**
- * Tranzaksiyalarni kanal bo'yicha guruhlaydi: avval mijoz (Yandex eats/Jiz-Biz),
- * keyin qolganlarini naqd/karta va payment_method_id xaritasi bo'yicha.
+ * Tranzaksiyalarni kanal bo'yicha guruhlaydi. Natijadagi barcha summalar
+ * allaqachon so'mda (AMOUNT_DIVISOR orqali tiyin'dan o'girilgan).
  */
 async function buildPosterSnapshot(transactions, spotId) {
   const clientMapping = await getClientMapping(spotId);
   const paymentMethodMapping = await getMapping(); // { payment_method_id: channel_key }
 
-  const totals = { cash: 0, yandex_eats: 0, jizbiz: 0, karta_other: 0 };
-  CHANNEL_ORDER.forEach((c) => { if (!(c in totals)) totals[c] = 0; });
+  const totals = { cash: 0, yandex_eats: 0, jizbiz: 0 };
+  NONCASH_CHANNEL_ORDER.forEach((c) => { totals[c] = 0; });
 
   for (const tx of transactions) {
     const clientId = tx.client_id ? String(tx.client_id) : null;
 
+    // Yandex eats / Jiz-Biz - Сертификат sifatida yopiladi, Безналичныега kirmaydi
     if (clientMapping.yandex_eats && clientId === String(clientMapping.yandex_eats)) {
-      totals.yandex_eats += Number(tx.sum) || 0;
+      totals.yandex_eats += (Number(tx.sum) || 0) / AMOUNT_DIVISOR;
       continue;
     }
     if (clientMapping.jizbiz && clientId === String(clientMapping.jizbiz)) {
-      totals.jizbiz += Number(tx.sum) || 0;
+      totals.jizbiz += (Number(tx.sum) || 0) / AMOUNT_DIVISOR;
       continue;
     }
 
-    totals.cash += Number(tx.payed_cash) || 0;
+    totals.cash += (Number(tx.payed_cash) || 0) / AMOUNT_DIVISOR;
 
-    const cardAmount = Number(tx.payed_card) || 0;
+    const cardAmount = (Number(tx.payed_card) || 0) / AMOUNT_DIVISOR;
     if (cardAmount > 0) {
       const methodId = tx.payment_method_id;
       const channelKey = methodId !== undefined && methodId !== null ? paymentMethodMapping[String(methodId)] : undefined;
@@ -118,8 +126,9 @@ async function buildPosterSnapshot(transactions, spotId) {
       }
     }
 
-    // Sertifikat, elektron hamyon va uchinchi tomon to'lovlari - aniqlanmagan bandiga
-    totals.karta_other += (Number(tx.payed_cert) || 0) + (Number(tx.payed_third_party) || 0) + (Number(tx.payed_ewallet) || 0);
+    // Aniqlanmagan elektron hamyon/uchinchi tomon to'lovlari - "Карточки" bandiga
+    // (Сертификат bu yerga kirmaydi - u faqat client_id orqali yuqorida hisoblanadi)
+    totals.karta_other += ((Number(tx.payed_third_party) || 0) + (Number(tx.payed_ewallet) || 0)) / AMOUNT_DIVISOR;
   }
 
   return totals;
@@ -127,10 +136,11 @@ async function buildPosterSnapshot(transactions, spotId) {
 
 /**
  * Berilgan kassa yozuvi uchun Poster bilan solishtirish natijasini hisoblaydi
- * (yoki keshdan qaytaradi, agar avval hisoblangan bo'lsa).
+ * (yoki keshdan qaytaradi, agar avval hisoblangan bo'lsa). Shu bilan birga
+ * "Umumiy kassa" farqi admin belgilagan chegaradan oshsa, o'sha kunlik bonusni
+ * avtomatik bekor qiladi (daily_bonus.cash_diff_ok orqali).
  * @param {object} entry cash_entries qatori
- * @param {object} options { forceUnlock: boolean } - true bo'lsa (masalan admin so'ragan
- *   bo'lsa), 6 soatlik qulf hisobga olinmaydi.
+ * @param {object} options { forceUnlock: boolean }
  */
 async function getComparison(entry, options = {}) {
   if (!options.forceUnlock && isLocked(entry)) {
@@ -160,33 +170,60 @@ async function getComparison(entry, options = {}) {
   const naличныеPoster = snapshot.cash;
 
   const nonCashRows = [
-    { key: 'uzcard', name: 'UZCARD', fakt: getFakt('UZCARD'), poster: snapshot.uzcard || 0 },
-    { key: 'humo', name: 'HUMO', fakt: getFakt('HUMO'), poster: snapshot.humo || 0 },
-    { key: 'uz_qr', name: 'Uz Qr Kod', fakt: getFakt('Uz Qr Kod'), poster: snapshot.uz_qr || 0 },
-    { key: 'karta_other', name: 'Карточки (aniqlanmagan)', fakt: 0, poster: snapshot.karta_other || 0 },
-    { key: 'click', name: 'Click', fakt: getFakt('Click'), poster: snapshot.click || 0 },
-    { key: 'payme', name: 'Payme', fakt: getFakt('Payme'), poster: snapshot.payme || 0 },
-    { key: 'uzum', name: 'Uzum', fakt: getFakt('Uzum'), poster: snapshot.uzum || 0 },
-    { key: 'alif', name: 'Alif', fakt: getFakt('Alif'), poster: snapshot.alif || 0 },
-    { key: 'paynet', name: 'Paynet', fakt: getFakt('Paynet'), poster: snapshot.paynet || 0 },
-    { key: 'yandex_eats', name: 'Yandex eats', fakt: getFakt('Yandex eats'), poster: snapshot.yandex_eats || 0 },
-    { key: 'jizbiz', name: 'Jiz-Biz restaurant', fakt: getFakt('Jiz-Biz restaurant'), poster: snapshot.jizbiz || 0 },
+    { name: 'UZCARD', fakt: getFakt('UZCARD'), poster: snapshot.uzcard || 0 },
+    { name: 'HUMO', fakt: getFakt('HUMO'), poster: snapshot.humo || 0 },
+    { name: 'Uz Qr Kod', fakt: getFakt('Uz Qr Kod'), poster: snapshot.uz_qr || 0 },
+    { name: 'Карточки (aniqlanmagan)', fakt: 0, poster: snapshot.karta_other || 0 },
+    { name: 'Click', fakt: getFakt('Click'), poster: snapshot.click || 0 },
+    { name: 'Payme', fakt: getFakt('Payme'), poster: snapshot.payme || 0 },
+    { name: 'Uzum', fakt: getFakt('Uzum'), poster: snapshot.uzum || 0 },
+    { name: 'Alif', fakt: getFakt('Alif'), poster: snapshot.alif || 0 },
+    { name: 'Paynet', fakt: getFakt('Paynet'), poster: snapshot.paynet || 0 },
   ];
-
   const безналичныеFakt = nonCashRows.reduce((s, r) => s + r.fakt, 0);
   const безналичныеPoster = nonCashRows.reduce((s, r) => s + r.poster, 0);
 
-  const umumiyFakt = naличныеFakt + безналичныеFakt;
-  const umumiyPoster = naличныеPoster + безналичныеPoster;
+  const certRows = [
+    { name: 'Yandex eats', fakt: getFakt('Yandex eats'), poster: snapshot.yandex_eats || 0 },
+    { name: 'Jiz-Biz restaurant', fakt: getFakt('Jiz-Biz restaurant'), poster: snapshot.jizbiz || 0 },
+  ];
+  const sertifikatFakt = certRows.reduce((s, r) => s + r.fakt, 0);
+  const sertifikatPoster = certRows.reduce((s, r) => s + r.poster, 0);
+
+  const umumiyFakt = naличныеFakt + безналичныеFakt + sertifikatFakt;
+  const umumiyPoster = naличныеPoster + безналичныеPoster + sertifikatPoster;
 
   const rows = [
     { name: 'Umumiy kassa', fakt: umumiyFakt, poster: umumiyPoster, level: 'total' },
     { name: 'Наличные оплаты', fakt: naличныеFakt, poster: naличныеPoster, level: 'subtotal' },
     { name: 'Безналичные оплаты', fakt: безналичныеFakt, poster: безналичныеPoster, level: 'subtotal' },
-    ...nonCashRows.map((r) => ({ name: r.name, fakt: r.fakt, poster: r.poster, level: 'detail' })),
+    ...nonCashRows.map((r) => ({ ...r, level: 'detail' })),
+    { name: 'Сертификат', fakt: sertifikatFakt, poster: sertifikatPoster, level: 'subtotal' },
+    ...certRows.map((r) => ({ ...r, level: 'detail' })),
   ];
 
-  return { locked: false, rows, computed_at: snapshot.computed_at };
+  // --- Bonus qoidasi: Umumiy kassa farqi chegaradan oshsa, shu kunlik bonus bekor qilinadi ---
+  const limitPercent = await getSettingNumber(CASH_DIFF_LIMIT_SETTING_KEY, DEFAULT_CASH_DIFF_LIMIT_PERCENT);
+  let diffPercent = 0;
+  if (umumiyPoster !== 0) {
+    diffPercent = Math.abs((umumiyFakt - umumiyPoster) / umumiyPoster) * 100;
+  }
+  const cashDiffOk = diffPercent <= limitPercent;
+
+  await pool.query('UPDATE daily_bonus SET cash_diff_ok = $1 WHERE date = $2 AND spot_id = $3', [
+    cashDiffOk ? 1 : 0,
+    entry.date,
+    entry.spot_id,
+  ]);
+
+  return {
+    locked: false,
+    rows,
+    computed_at: snapshot.computed_at,
+    diff_percent: Math.round(diffPercent * 100) / 100,
+    limit_percent: limitPercent,
+    cash_diff_ok: cashDiffOk,
+  };
 }
 
 module.exports = { getComparison, isLocked, unlockTime, RECONCILE_DELAY_HOURS, fetchTransactionsForBusinessDay };
