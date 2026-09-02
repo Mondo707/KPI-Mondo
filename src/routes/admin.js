@@ -5,6 +5,7 @@ const { authRequired, adminOnly } = require('../middleware/auth');
 const { getEffectiveCategories, setTierBonus } = require('../services/configService');
 const { syncDate } = require('../services/scheduler');
 const { getSpotCategoryStatus, setCategoryEnabled } = require('../services/spotCategoryConfig');
+const { getMappingDetailed, setMapping, discoverPaymentMethods, KNOWN_CHANNELS } = require('../services/posterPaymentMethods');
 
 const router = express.Router();
 
@@ -310,6 +311,36 @@ router.post('/sync-range', async (req, res) => {
     failed_days: failed.length,
     results,
   });
+});
+
+// GET /api/admin/payment-methods - hozirgi payment_method_id xaritasi
+router.get('/payment-methods', async (req, res) => {
+  const mapping = await getMappingDetailed();
+  res.json({ mapping, known_channels: KNOWN_CHANNELS });
+});
+
+// PUT /api/admin/payment-methods - bitta payment_method_id'ni kanalga bog'lash
+// body: { payment_method_id: "3", channel_key: "uzcard", label: "UZCARD karta" }
+router.put('/payment-methods', async (req, res) => {
+  const { payment_method_id, channel_key, label } = req.body || {};
+  if (!payment_method_id || !channel_key) {
+    return res.status(400).json({ error: 'payment_method_id va channel_key kerak' });
+  }
+  await setMapping(payment_method_id, channel_key, label);
+  res.json({ ok: true });
+});
+
+// GET /api/admin/payment-methods/discover?spot_id=&days=7 - oxirgi kunlardagi
+// tranzaksiyalarni skanerlab, qanday payment_method_id'lar uchraganini topadi
+router.get('/payment-methods/discover', async (req, res) => {
+  const { spot_id, days } = req.query;
+  try {
+    const found = await discoverPaymentMethods(spot_id ? Number(spot_id) : null, days ? Number(days) : 7);
+    res.json({ found });
+  } catch (e) {
+    // Poster'ga ulanib bo'lmasa ham, sahifa buzilmasin - bo'sh natija bilan xatoni bildiramiz
+    res.json({ found: [], warning: `Poster'dan ma'lumot olib bo'lmadi: ${e.message}` });
+  }
 });
 
 module.exports = router;

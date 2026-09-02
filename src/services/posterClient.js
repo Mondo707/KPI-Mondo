@@ -19,11 +19,13 @@ const client = axios.create({
  * Poster API metodini chaqirish.
  * @param {string} method masalan: 'menu.getProducts', 'dash.getCashShifts'
  * @param {object} params qo'shimcha query parametrlar (masalan sana oralig'i)
+ * @param {string} httpMethod 'GET' (standart) yoki 'POST'
  */
-async function call(method, params = {}) {
-  const res = await client.get(`/${method}`, {
-    params: { token: TOKEN, ...params },
-  });
+async function call(method, params = {}, httpMethod = 'GET') {
+  const config = { params: { token: TOKEN, ...params } };
+  const res = httpMethod === 'POST'
+    ? await client.post(`/${method}`, null, config)
+    : await client.get(`/${method}`, config);
   // Poster xato bo'lsa ham 200 qaytarishi mumkin, shuning uchun tekshiramiz
   if (res.data && res.data.error) {
     const err = new Error(`Poster API xatosi [${method}]: ${JSON.stringify(res.data.error)}`);

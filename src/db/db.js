@@ -77,6 +77,13 @@ async function init() {
       updated_at TIMESTAMP DEFAULT now(),
       PRIMARY KEY (spot_id, channel_key)
     );
+
+    CREATE TABLE IF NOT EXISTS poster_payment_methods (
+      payment_method_id TEXT PRIMARY KEY,
+      channel_key TEXT NOT NULL,
+      label TEXT,
+      updated_at TIMESTAMP DEFAULT now()
+    );
   `);
 
   // Eski bazalarda yangi ustunlar bo'lmasligi mumkin - xavfsiz migratsiya

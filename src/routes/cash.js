@@ -3,8 +3,12 @@ const XLSX = require('xlsx');
 const { pool } = require('../db/db');
 const { authRequired, requireSection } = require('../middleware/auth');
 const { getComparison } = require('../services/cashReconcile');
+const { getShiftStatus } = require('../services/posterShiftStatus');
+const poster = require('../services/posterClient');
 
 const router = express.Router();
+
+const PAYTYPE_EXPORT_ORDER = ['HUMO', 'UZCARD', 'Инкассация', 'Uz Qr Kod', 'Click', 'Payme', 'Uzum', 'Alif', 'Paynet', 'Yandex eats', 'Jiz-Biz restaurant'];
 
 function computeTotals(expenses, banknotes, paymentTypes) {
   const totalExpense = (expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
@@ -16,7 +20,7 @@ function computeTotals(expenses, banknotes, paymentTypes) {
   return { totalExpense, toza, totalPaytypes, totalAmount };
 }
 
-// POST /api/cash/entry - xodim kunlik kassa ma'lumotlarini kiritadi/yangilaydi
+// POST /api/cash/entry - xodim kunlik kassa ma'lumotlarini kiritadi
 // body: { date, spot_id, expenses: [{name,amount}], banknotes: {"1000":5,...}, payment_types: {"UZCARD":100000,...} }
 router.post('/entry', authRequired, requireSection('cash'), async (req, res) => {
   const { date, spot_id, expenses = [], banknotes = {}, payment_types = {} } = req.body || {};
@@ -24,9 +28,32 @@ router.post('/entry', authRequired, requireSection('cash'), async (req, res) => 
     return res.status(400).json({ error: 'date, spot_id kerak' });
   }
 
-  const { totalExpense, toza, totalPaytypes, totalAmount } = computeTotals(expenses, banknotes, payment_types);
-
   try {
+    // Agar bu kun uchun yozuv allaqachon bo'lsa - faqat admin tahrirlashi mumkin
+    const existing = await pool.query('SELECT id FROM cash_entries WHERE date = $1 AND spot_id = $2', [date, spot_id]);
+    if (existing.rows.length > 0 && req.user.role !== 'admin') {
+      return res.status(403).json({
+        error: 'Bu kun uchun ma\'lumot allaqachon yuborilgan. O\'zgartirish uchun administratorga murojaat qiling.',
+      });
+    }
+
+    // Kassa smenasi yopilganini tekshiramiz (faqat birinchi marta yuborishda,
+    // eng yaxshi urinish bilan - aniqlab bo'lmasa, bloklamaymiz)
+    if (existing.rows.length === 0) {
+      try {
+        const shift = await getShiftStatus(spot_id, date);
+        if (shift.status === 'open') {
+          return res.status(400).json({
+            error: 'Bu kun uchun kassa smenasi hali yopilmagan. Smena yopilgandan keyin yuboring.',
+          });
+        }
+      } catch (e) {
+        console.warn('[cash] Smena holatini tekshirishda xato (o\'tkazib yuborildi):', e.message);
+      }
+    }
+
+    const { totalExpense, toza, totalPaytypes, totalAmount } = computeTotals(expenses, banknotes, payment_types);
+
     await pool.query(
       `INSERT INTO cash_entries (date, spot_id, expenses, banknotes, payment_types, toza, total_expense, total_paytypes, total_amount, entered_amount, entered_by, created_at, poster_synced_at, poster_snapshot)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10, now(), NULL, NULL)
@@ -57,7 +84,7 @@ router.post('/entry', authRequired, requireSection('cash'), async (req, res) => 
   }
 });
 
-// GET /api/cash/entry?date=&spot_id= - kiritilgan (Fakt) ma'lumotni o'qish
+// GET /api/cash/entry?date=&spot_id=
 router.get('/entry', authRequired, requireSection('cash'), async (req, res) => {
   const { date, spot_id } = req.query;
   if (!date || !spot_id) return res.status(400).json({ error: 'date va spot_id kerak' });
@@ -74,6 +101,8 @@ router.get('/entry', authRequired, requireSection('cash'), async (req, res) => {
       expenses: JSON.parse(row.expenses || '[]'),
       banknotes: JSON.parse(row.banknotes || '{}'),
       payment_types: JSON.parse(row.payment_types || '{}'),
+      // Xodim uchun: bu yozuvni faqat admin tahrirlay oladimi
+      editable_by_current_user: req.user.role === 'admin',
     },
   });
 });
@@ -97,7 +126,7 @@ router.get('/compare', authRequired, requireSection('cash'), async (req, res) =>
   }
 });
 
-// GET /api/cash/journal?spot_id=&date_from=&date_to= - kunlik kassa jurnali
+// GET /api/cash/journal?spot_id=&date_from=&date_to=
 router.get('/journal', authRequired, requireSection('cash'), async (req, res) => {
   const { spot_id, date_from, date_to } = req.query;
   if (!spot_id || !date_from || !date_to) {
@@ -120,8 +149,13 @@ router.get('/journal', authRequired, requireSection('cash'), async (req, res) =>
   res.json({ entries: result.rows });
 });
 
-// GET /api/cash/export?spot_id=&date_from=&date_to= - Excel (.xlsx) formatida yuklab olish
-router.get('/export', authRequired, requireSection('cash'), async (req, res) => {
+// GET /api/cash/export?spot_id=&date_from=&date_to= - Excel (.xlsx), FAQAT ADMIN
+// Har bir filial uchun alohida varaq, sanalar ustunlarda, to'lov turlari qatorlarda.
+router.get('/export', authRequired, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Excel eksport faqat administratorlar uchun' });
+  }
+
   const { spot_id, date_from, date_to } = req.query;
   if (!date_from || !date_to) {
     return res.status(400).json({ error: 'date_from va date_to kerak' });
@@ -135,23 +169,59 @@ router.get('/export', authRequired, requireSection('cash'), async (req, res) => 
   }
 
   const result = await pool.query(
-    `SELECT * FROM cash_entries WHERE ${conditions.join(' AND ')} ORDER BY date ASC, spot_id ASC`,
+    `SELECT * FROM cash_entries WHERE ${conditions.join(' AND ')} ORDER BY date ASC`,
     params
   );
 
-  const rows = result.rows.map((r) => ({
-    'Sana': r.date,
-    'Filial ID': r.spot_id,
-    'Тоза (naqd)': r.toza,
-    'Umumiy rasxod': r.total_expense,
-    'To\'lov turlari yig\'indisi': r.total_paytypes,
-    'Umumiy kassa': r.total_amount,
-    'Kiritilgan vaqt': r.created_at,
-  }));
+  let spotNames = {};
+  try {
+    const spots = await poster.call('spots.getSpots');
+    spots.forEach((s) => { spotNames[s.spot_id] = s.name; });
+  } catch (e) {
+    // nom topilmasa ID bilan ko'rsatamiz
+  }
 
-  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const bySpot = new Map();
+  result.rows.forEach((r) => {
+    if (!bySpot.has(r.spot_id)) bySpot.set(r.spot_id, []);
+    bySpot.get(r.spot_id).push(r);
+  });
+
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Kassa');
+
+  for (const [spotId, entries] of bySpot.entries()) {
+    entries.sort((a, b) => (a.date < b.date ? -1 : 1));
+    const dates = entries.map((e) => e.date);
+
+    const grid = [];
+    grid.push(['', ...dates]);
+    grid.push(['Umumiy Kassa', ...entries.map((e) => e.total_amount)]);
+    grid.push([]);
+
+    PAYTYPE_EXPORT_ORDER.forEach((ptName) => {
+      grid.push([
+        ptName,
+        ...entries.map((e) => {
+          const pt = JSON.parse(e.payment_types || '{}');
+          return Number(pt[ptName]) || 0;
+        }),
+      ]);
+    });
+
+    grid.push([]);
+    grid.push(['Total', ...entries.map((e) => e.total_paytypes)]);
+    grid.push([]);
+    grid.push(['Expenses', ...entries.map((e) => e.total_expense)]);
+    grid.push(['Toza', ...entries.map((e) => e.toza)]);
+
+    const worksheet = XLSX.utils.aoa_to_sheet(grid);
+    const sheetName = (spotNames[spotId] || `Filial ${spotId}`).slice(0, 31);
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  }
+
+  if (bySpot.size === 0) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['Ma\'lumot topilmadi']]), 'Kassa');
+  }
 
   const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
