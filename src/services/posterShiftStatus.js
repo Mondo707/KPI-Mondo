@@ -1,18 +1,19 @@
 // Kassa smenasi (zakrit smen) shu kun uchun yopilganmi-yo'qmi, deb tekshiradi.
 //
-// MUHIM: Poster'ning ochiq API'sida bu ma'lumot uchun ishlaydigan aniq metod
-// tasdiqlanmagan (biz turli variantlarni sinaymiz). Agar hech qaysi metod
-// ishlamasa, tizim "aniqlab bo'lmadi" holatini qaytaradi va Yuborish tugmasini
-// BLOKLAMAYDI (xatoga yo'l qo'ymaslik uchun ehtiyotkorlik bilan ochiq qoldiradi).
-// Agar hisobingizda ishlaydigan metod topilsa, buni keyinroq qattiqroq qilib
-// (majburiy bloklash) o'zgartirish mumkin.
+// Diagnostika orqali tasdiqlandi: "finance.getCashShifts" (GET) ishlaydi va
+// har bir smena uchun quyidagi maydonlarni beradi:
+//   date_end: "0000-00-00 00:00:00" -> smena HALI OCHIQ (yopilmagan)
+//   date_end: haqiqiy sana/vaqt      -> smena YOPILGAN
+// Agar bu metod ham ishlamay qolsa, tizim "aniqlab bo'lmadi" holatini qaytaradi
+// va Yuborish tugmasini BLOKLAMAYDI (xatoga yo'l qo'ymaslik uchun ehtiyotkorlik bilan).
 
 const poster = require('./posterClient');
 
+const ZERO_DATE = '0000-00-00 00:00:00';
+
 const CANDIDATES = [
-  { method: 'dash.getCashShifts', httpMethod: 'POST' },
-  { method: 'dash.getCashShifts', httpMethod: 'GET' },
   { method: 'finance.getCashShifts', httpMethod: 'GET' },
+  { method: 'dash.getCashShifts', httpMethod: 'GET' },
 ];
 
 /**
@@ -22,10 +23,13 @@ async function getShiftStatus(spotId, dateStr) {
   for (const { method, httpMethod } of CANDIDATES) {
     try {
       const data = await poster.call(method, { date_from: dateStr, date_to: dateStr, spot_id: spotId }, httpMethod);
-      if (Array.isArray(data) && data.length > 0) {
-        // Poster odatda smena obyektida date_end / status maydonlaridan birini beradi
-        const shift = data[data.length - 1];
-        const isClosed = !!(shift.date_end || shift.status === 'CLOSE' || shift.status === 'closed' || Number(shift.status) === 2);
+      const list = Array.isArray(data) ? data : (data && data.response) || [];
+      if (Array.isArray(list) && list.length > 0) {
+        // Shu filialga tegishli smenalarni olib, oxirgisini tekshiramiz
+        const spotShifts = list.filter((s) => !s.spot_id || Number(s.spot_id) === Number(spotId));
+        const shift = (spotShifts.length ? spotShifts : list)[spotShifts.length ? spotShifts.length - 1 : list.length - 1];
+        const dateEnd = shift.date_end || '';
+        const isClosed = dateEnd && dateEnd !== ZERO_DATE;
         return { status: isClosed ? 'closed' : 'open', raw: shift };
       }
     } catch (e) {

@@ -55,9 +55,10 @@ router.put('/spot-categories', async (req, res) => {
 });
 
 // GET /api/admin/client-mapping?spot_id=6 - Poster client_id xaritasi (Yandex eats, Jiz-Biz)
+// spot_id=0 = "barchasi" (global) sozlama
 router.get('/client-mapping', async (req, res) => {
   const { spot_id } = req.query;
-  if (!spot_id) return res.status(400).json({ error: 'spot_id kerak' });
+  if (spot_id === undefined || spot_id === '') return res.status(400).json({ error: 'spot_id kerak' });
   const result = await pool.query(
     'SELECT channel_key, poster_client_id FROM poster_client_mapping WHERE spot_id = $1',
     [Number(spot_id)]
@@ -69,9 +70,10 @@ router.get('/client-mapping', async (req, res) => {
 
 // PUT /api/admin/client-mapping - bitta kanal uchun Poster client_id'ni sozlash
 // body: { spot_id: 6, channel_key: "yandex_eats", poster_client_id: "1234" }
+// spot_id=0 = "barchasi" (global) sozlama - barcha filiallar uchun ishlatiladi
 router.put('/client-mapping', async (req, res) => {
   const { spot_id, channel_key, poster_client_id } = req.body || {};
-  if (!spot_id || !channel_key || !poster_client_id) {
+  if (spot_id === undefined || spot_id === null || !channel_key || !poster_client_id) {
     return res.status(400).json({ error: 'spot_id, channel_key, poster_client_id kerak' });
   }
   await pool.query(

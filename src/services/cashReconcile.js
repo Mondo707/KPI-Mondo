@@ -1,5 +1,11 @@
 // Kassa kiritilgan "Fakt" ma'lumotlarni Poster'dagi haqiqiy to'lovlar bilan solishtiradi.
 //
+// MUHIM: bu servis ma'lumotlarni oddiy "transactions.getTransactions" o'rniga
+// "dash.getTransactions" orqali oladi - chunki faqat shu metod payment_method_id
+// va client_id maydonlarini beradi (buni diagnostika orqali tasdiqladik).
+// Vaqtni solishtirish uchun tx.date_close (raqamli epoch millisekund) ishlatiladi -
+// bu ikkala Poster metodi orasidagi vaqt zonasi farqidan qochish uchun eng ishonchli usul.
+//
 // Tuzilma:
 //   Umumiy kassa
 //     Наличные оплаты   = Тоза + Umumiy rasxod + Инкассация (Poster tomonida: payed_cash)
@@ -8,49 +14,44 @@
 //         (Poster tomonida: admin panelda sozlangan payment_method_id xaritasi orqali)
 //       - Карточки - xaritada yo'q/aniqlanmagan karta to'lovlari (zaxira band)
 //       - Yandex eats, Jiz-Biz restaurant - Poster'dagi client_id bo'yicha (aniq)
-//
-// MUHIM: payment_method_id xaritasi hali sizning haqiqiy hisobingiz bilan
-// sinalmagan. Agar xarita bo'sh bo'lsa, barcha karta to'lovlari "Карточки"
-// bandiga tushadi - hech narsa yo'qolmaydi, faqat kanal-kanal ajratilmaydi.
 
 const poster = require('./posterClient');
 const { pool } = require('../db/db');
-const { getBusinessDayWindow } = require('./businessDay');
+const { getBusinessDayWindowEpoch } = require('./businessDay');
 const { getMapping } = require('./posterPaymentMethods');
 
 const RECONCILE_DELAY_HOURS = Number(process.env.CASH_RECONCILE_DELAY_HOURS || 6);
 
-const CHANNEL_LABELS = {
-  uzcard: 'UZCARD',
-  humo: 'HUMO',
-  uz_qr: 'Uz Qr Kod',
-  click: 'Click',
-  payme: 'Payme',
-  uzum: 'Uzum',
-  alif: 'Alif',
-  paynet: 'Paynet',
-};
 const CHANNEL_ORDER = ['uzcard', 'humo', 'uz_qr', 'karta_other', 'click', 'payme', 'uzum', 'alif', 'paynet', 'yandex_eats', 'jizbiz'];
 
+/**
+ * dash.getTransactions orqali berilgan "ish kuni" uchun barcha tranzaksiyalarni oladi
+ * (payment_method_id va client_id bilan birga).
+ */
 async function fetchTransactionsForBusinessDay(dateStr, spotId) {
-  const { startStr, endStr, fetchDates } = getBusinessDayWindow(dateStr);
+  const { startMs, endMs } = getBusinessDayWindowEpoch(dateStr);
+
+  // Ikki kalendar kunini so'raymiz (chunki ish kuni kechayarim orqali o'tishi mumkin)
+  const d1 = dateStr;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const nextDt = new Date(Date.UTC(y, m - 1, d + 1));
+  const d2 = `${nextDt.getUTCFullYear()}-${String(nextDt.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDt.getUTCDate()).padStart(2, '0')}`;
+
   let allTx = [];
-  for (const calendarDate of fetchDates) {
-    let page = 1;
-    while (true) {
-      const result = await poster.call('transactions.getTransactions', {
-        date_from: calendarDate,
-        date_to: calendarDate,
-        per_page: 100,
-        page,
-      });
-      const filtered = result.data.filter((t) => Number(t.spot_id) === Number(spotId));
-      allTx = allTx.concat(filtered);
-      if (result.data.length < 100) break;
-      page += 1;
-    }
+  for (const calendarDate of [d1, d2]) {
+    const result = await poster.call('dash.getTransactions', {
+      date_from: calendarDate,
+      date_to: calendarDate,
+    });
+    const list = Array.isArray(result) ? result : (result.data || []);
+    allTx = allTx.concat(list);
   }
-  return allTx.filter((tx) => tx.date_close >= startStr && tx.date_close < endStr);
+
+  return allTx.filter((tx) => {
+    if (Number(tx.spot_id) !== Number(spotId)) return false;
+    const closeMs = Number(tx.date_close);
+    return closeMs >= startMs && closeMs < endMs;
+  });
 }
 
 function isLocked(entry) {
@@ -65,17 +66,28 @@ function unlockTime(entry) {
 }
 
 /**
+ * Berilgan filial uchun Yandex eats / Jiz-Biz client_id xaritasini oladi.
+ * Avval shu filialga xos sozlama qidiriladi, topilmasa "barchasi" (spot_id=0)
+ * global sozlamasi ishlatiladi - chunki bu klientlar odatda butun akkauntda bir xil.
+ */
+async function getClientMapping(spotId) {
+  const result = await pool.query(
+    'SELECT channel_key, poster_client_id FROM poster_client_mapping WHERE spot_id = $1 OR spot_id = 0 ORDER BY (spot_id = 0) ASC',
+    [spotId]
+  );
+  const mapping = {};
+  result.rows.forEach((r) => {
+    if (!(r.channel_key in mapping)) mapping[r.channel_key] = r.poster_client_id;
+  });
+  return mapping;
+}
+
+/**
  * Tranzaksiyalarni kanal bo'yicha guruhlaydi: avval mijoz (Yandex eats/Jiz-Biz),
  * keyin qolganlarini naqd/karta va payment_method_id xaritasi bo'yicha.
  */
 async function buildPosterSnapshot(transactions, spotId) {
-  const mappingRes = await pool.query(
-    'SELECT channel_key, poster_client_id FROM poster_client_mapping WHERE spot_id = $1',
-    [spotId]
-  );
-  const clientMapping = {};
-  mappingRes.rows.forEach((r) => { clientMapping[r.channel_key] = r.poster_client_id; });
-
+  const clientMapping = await getClientMapping(spotId);
   const paymentMethodMapping = await getMapping(); // { payment_method_id: channel_key }
 
   const totals = { cash: 0, yandex_eats: 0, jizbiz: 0, karta_other: 0 };
@@ -97,8 +109,8 @@ async function buildPosterSnapshot(transactions, spotId) {
 
     const cardAmount = Number(tx.payed_card) || 0;
     if (cardAmount > 0) {
-      const methodId = tx.payment_method_id ?? tx.pay_type;
-      const channelKey = methodId !== undefined ? paymentMethodMapping[String(methodId)] : undefined;
+      const methodId = tx.payment_method_id;
+      const channelKey = methodId !== undefined && methodId !== null ? paymentMethodMapping[String(methodId)] : undefined;
       if (channelKey && totals[channelKey] !== undefined) {
         totals[channelKey] += cardAmount;
       } else {
@@ -106,8 +118,8 @@ async function buildPosterSnapshot(transactions, spotId) {
       }
     }
 
-    // Sertifikat va uchinchi tomon to'lovlari ham "Карточки"ga qo'shiladi (aniqlanmagan)
-    totals.karta_other += (Number(tx.payed_cert) || 0) + (Number(tx.payed_third_party) || 0);
+    // Sertifikat, elektron hamyon va uchinchi tomon to'lovlari - aniqlanmagan bandiga
+    totals.karta_other += (Number(tx.payed_cert) || 0) + (Number(tx.payed_third_party) || 0) + (Number(tx.payed_ewallet) || 0);
   }
 
   return totals;

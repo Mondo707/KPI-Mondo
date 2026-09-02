@@ -79,4 +79,18 @@ function getCurrentBusinessDate(startHour = DEFAULT_START_HOUR) {
   return `${year}-${pad2(month + 1)}-${pad2(day)}`;
 }
 
-module.exports = { getBusinessDayWindow, filterByBusinessDay, getCurrentBusinessDate, DEFAULT_START_HOUR };
+/**
+ * Xuddi getBusinessDayWindow, lekin natijani UTC epoch millisekundlarida qaytaradi
+ * (matn taqqoslash o'rniga). Bu ba'zi Poster metodlari (masalan dash.getTransactions)
+ * date_close'ni raqamli epoch ko'rinishida berganda, vaqt zonasi noaniqliklaridan
+ * qochish uchun ishlatiladi - eng ishonchli usul.
+ */
+function getBusinessDayWindowEpoch(dateStr, startHour = DEFAULT_START_HOUR) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  // Toshkentda "dateStr startHour:00:00" = UTC'da shu vaqtdan TIMEZONE_OFFSET_HOURS kam
+  const startMs = Date.UTC(y, m - 1, d, startHour, 0, 0) - TIMEZONE_OFFSET_HOURS * 60 * 60 * 1000;
+  const endMs = startMs + 24 * 60 * 60 * 1000;
+  return { startMs, endMs };
+}
+
+module.exports = { getBusinessDayWindow, getBusinessDayWindowEpoch, filterByBusinessDay, getCurrentBusinessDate, DEFAULT_START_HOUR };
