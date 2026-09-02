@@ -356,7 +356,10 @@
         } else {
           lockedEl.style.display = 'none';
           unlockedEl.style.display = 'block';
-          subEl.textContent = 'Xodim kiritgan (Fakt) va Poster\'dagi haqiqiy to\'lovlar.';
+          const statusText = data.cash_diff_ok
+            ? `<span class="badge ok">Bonus saqlanadi</span> (farq: ${data.diff_percent}%, chegara: ${data.limit_percent}%)`
+            : `<span class="badge bad">Bonus bekor qilindi</span> (farq: ${data.diff_percent}%, chegara: ${data.limit_percent}%)`;
+          subEl.innerHTML = `Xodim kiritgan (Fakt) va Poster'dagi haqiqiy to'lovlar. ${statusText}`;
           const tbody = document.getElementById('compare-body');
           tbody.innerHTML = data.rows.map((r) => {
             const diff = r.fakt - r.poster;

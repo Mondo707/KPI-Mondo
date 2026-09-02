@@ -50,6 +50,24 @@
       <div id="spot-categories-wrap" style="margin-top:14px;"></div>
     </div>
 
+    <div class="section" style="border-color: var(--brand-purple);">
+      <h2>Kassa farqi chegarasi (bonus qoidasi)</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
+        Agar kunlik <b>Umumiy kassa</b> (Наличные + Безналичные + Сертификат jami) farqi shu foizdan
+        katta bo'lsa, o'sha kun uchun bonus avtomatik bekor qilinadi.
+      </p>
+      <div class="form-row">
+        <div class="field" style="max-width:140px;">
+          <label for="cash-diff-limit-input">Chegara (%)</label>
+          <input type="number" id="cash-diff-limit-input" step="0.1" min="0">
+        </div>
+        <button class="btn-primary" id="cash-diff-limit-save-btn" style="max-width:140px;">Saqlash</button>
+      </div>
+      <p style="font-size:11.5px; color:var(--text-dim); margin-bottom:0;">
+        Hozirgi qiymat: <b style="color:var(--accent);" id="cash-diff-limit-current">—</b>
+      </p>
+    </div>
+
     <div class="section">
       <h2>Poster klient xaritasi (Yandex eats / Jiz-Biz restaurant)</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
@@ -186,6 +204,34 @@
     renderTopbar('admin');
 
     let spotsList = [];
+
+    async function loadCashDiffLimit() {
+      try {
+        const data = await apiFetch('/admin/cash-diff-limit');
+        document.getElementById('cash-diff-limit-input').value = data.cash_diff_limit_percent;
+        document.getElementById('cash-diff-limit-current').textContent = data.cash_diff_limit_percent + '%';
+      } catch (e) {
+        showToast('Xato: ' + e.message, true);
+      }
+    }
+
+    document.getElementById('cash-diff-limit-save-btn').addEventListener('click', async () => {
+      const value = document.getElementById('cash-diff-limit-input').value;
+      if (value === '' || Number(value) < 0) {
+        showToast('To\'g\'ri qiymat kiriting', true);
+        return;
+      }
+      try {
+        await apiFetch('/admin/cash-diff-limit', {
+          method: 'PUT',
+          body: JSON.stringify({ cash_diff_limit_percent: Number(value) }),
+        });
+        showToast('Saqlandi');
+        await loadCashDiffLimit();
+      } catch (e) {
+        showToast('Xato: ' + e.message, true);
+      }
+    });
 
     async function loadSpotsForForm() {
       try {
@@ -805,6 +851,7 @@
       document.getElementById('ce-from').value = monthAgoStr;
       document.getElementById('ce-to').value = today;
 
+      await loadCashDiffLimit();
       await loadSpotsForForm();
       await loadBonusConfig();
       await loadUsers();
