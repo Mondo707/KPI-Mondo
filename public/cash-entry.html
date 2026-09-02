@@ -119,6 +119,16 @@
       </table>
       <div class="empty-state" id="journal-empty" style="display:none;">Hali yozuv yo'q</div>
     </div>
+
+    <div class="section" id="diff-journal-section" style="margin-top:24px;">
+      <h2 style="margin-top:0;">Farq jurnali — <span id="diff-journal-spot-name"></span></h2>
+      <p class="journal-sub">Har bir kun uchun Poster bilan solishtirilgan umumiy farq tarixi (Fakt − Poster).</p>
+      <table>
+        <thead><tr><th>Sana</th><th>Fakt</th><th>Poster</th><th>Farq</th><th>Holat</th></tr></thead>
+        <tbody id="diff-journal-body"></tbody>
+      </table>
+      <div class="empty-state" id="diff-journal-empty" style="display:none;">Hali yozuv yo'q</div>
+    </div>
   </div>
 
   <script src="/js/api.js"></script>
@@ -167,7 +177,7 @@
       BANKNOTES.forEach((v) => {
         const row = document.createElement('div');
         row.className = 'bn-row';
-        row.innerHTML = `<span class="bn-label">${v.toLocaleString('ru-RU')} so'm</span>
+        row.innerHTML = `<span class="bn-label">${v.toLocaleString('ru-RU')}</span>
           <input type="number" class="bn-count" data-value="${v}" value="0" min="0">
           <span class="bn-sum" data-sum-for="${v}">0</span>`;
         grid.appendChild(row);
@@ -389,6 +399,7 @@
         currentEntryCreatedAt = new Date().toISOString();
         await loadCompare();
         await loadJournal();
+        await loadDiffJournal();
       } catch (e) {
         showToast('Xato: ' + e.message, true);
       }
@@ -487,6 +498,53 @@
       }
     }
 
+    async function loadDiffJournal() {
+      const spot_id = document.getElementById('spot_id').value;
+      if (!spot_id) return;
+      document.getElementById('diff-journal-spot-name').textContent = spotsById[spot_id] || ('#' + spot_id);
+
+      const today = todayStr();
+      const monthAgo = new Date();
+      monthAgo.setDate(monthAgo.getDate() - 30);
+      const from = monthAgo.toISOString().slice(0, 10);
+
+      try {
+        const data = await apiFetch(`/cash/diff-journal?spot_id=${spot_id}&date_from=${from}&date_to=${today}`);
+        const tbody = document.getElementById('diff-journal-body');
+        const emptyEl = document.getElementById('diff-journal-empty');
+        tbody.innerHTML = '';
+
+        if (!data.entries.length) {
+          emptyEl.style.display = 'block';
+          return;
+        }
+        emptyEl.style.display = 'none';
+
+        tbody.innerHTML = data.entries.map((e) => {
+          if (e.locked) {
+            return `<tr>
+              <td>${e.date}</td>
+              <td colspan="3" style="color:var(--text-dim);">Hali qulflangan</td>
+              <td><span class="badge neutral">Kutilmoqda</span></td>
+            </tr>`;
+          }
+          const diffClass = Math.abs(e.diff) < 1000 ? 'diff-pos' : 'diff-neg';
+          const diffText = (e.diff > 0 ? '+' : '') + Math.round(e.diff).toLocaleString('ru-RU');
+          return `<tr>
+            <td>${e.date}</td>
+            <td>${formatMoney(e.fakt)}</td>
+            <td style="color:var(--text-dim);">${formatMoney(e.poster)}</td>
+            <td class="${diffClass}">${diffText}</td>
+            <td>${Math.abs(e.diff) < 1000
+              ? '<span class="badge ok">Mos</span>'
+              : '<span class="badge bad">Farq bor</span>'}</td>
+          </tr>`;
+        }).join('');
+      } catch (e) {
+        showToast('Farq jurnalini yuklashda xato: ' + e.message, true);
+      }
+    }
+
     async function exportExcel() {
       const spot_id = document.getElementById('spot_id').value;
       const today = todayStr();
@@ -519,7 +577,7 @@
     document.getElementById('submit-btn').addEventListener('click', submitForm);
     document.getElementById('print-btn').addEventListener('click', preparePrint);
     document.getElementById('export-btn').addEventListener('click', exportExcel);
-    document.getElementById('spot_id').addEventListener('change', () => { loadEntry(); loadJournal(); });
+    document.getElementById('spot_id').addEventListener('change', () => { loadEntry(); loadJournal(); loadDiffJournal(); });
 
     (async function init() {
       document.getElementById('entry_date').value = todayStr();
@@ -537,6 +595,7 @@
       recalc();
       await loadEntry();
       await loadJournal();
+        await loadDiffJournal();
     })();
   </script>
 </body>

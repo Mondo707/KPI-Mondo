@@ -13,6 +13,7 @@
   --warn: #f59e0b;
   --brand-purple: #5a2975;
   --brand-purple-light: #8b5fa8;
+  --input-bg: #0b1220;
   --radius: 10px;
 }
 
@@ -30,6 +31,10 @@
   --success: #16a34a;
   --danger: #dc2626;
   --warn: #d97706;
+  --input-bg: #ffffff;
+}
+[data-theme="light"] input, [data-theme="light"] select {
+  border: 1px solid var(--border-strong);
 }
 [data-theme="light"] .btn-primary { color: #2b2205; }
 [data-theme="light"] .receipt { box-shadow: 0 20px 40px -18px rgba(90,41,117,0.25); }
@@ -85,7 +90,7 @@ label {
 input, select {
   width: 100%;
   padding: 10px 12px;
-  background: #0b1220;
+  background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
@@ -205,7 +210,7 @@ th, td {
   font-size: 14px;
 }
 th {
-  background: #172234;
+  background: var(--card-hover);
   color: var(--text-dim);
   font-weight: 600;
   font-size: 12px;
@@ -224,7 +229,7 @@ tr:hover td { background: var(--card-hover); }
 }
 .badge.ok { background: rgba(34,197,94,0.15); color: var(--success); }
 .badge.bad { background: rgba(239,68,68,0.15); color: var(--danger); }
-.badge.neutral { background: #263449; color: var(--text-dim); }
+.badge.neutral { background: var(--card-hover); color: var(--text-dim); }
 
 .spot-checks {
   display: grid;
@@ -232,7 +237,7 @@ tr:hover td { background: var(--card-hover); }
   gap: 6px;
   max-height: 160px;
   overflow-y: auto;
-  background: #0b1220;
+  background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
@@ -261,13 +266,13 @@ tr:hover td { background: var(--card-hover); }
 .spots-edit-panel {
   margin-top: 8px;
   padding: 10px;
-  background: #0b1220;
+  background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
 
 .pw-cell code {
-  background: #0b1220;
+  background: var(--input-bg);
   border: 1px solid var(--border);
   padding: 2px 8px;
   border-radius: 5px;
@@ -400,7 +405,7 @@ tr:hover td { background: var(--card-hover); }
   position: relative;
   height: 8px;
   border-radius: 6px;
-  background: #0b1220;
+  background: var(--input-bg);
   overflow: hidden;
   margin-bottom: 8px;
   display: flex;
@@ -409,7 +414,7 @@ tr:hover td { background: var(--card-hover); }
 .tier-seg {
   height: 100%;
   flex: 1;
-  background: #263449;
+  background: var(--border-strong);
   border-radius: 2px;
 }
 .tier-seg.reached { background: var(--success); }
@@ -430,7 +435,7 @@ tr:hover td { background: var(--card-hover); }
   background: rgba(34,197,94,0.15);
   color: var(--accent);
 }
-.tier-level-badge.none { background: #263449; color: var(--text-dim); }
+.tier-level-badge.none { background: var(--card-hover); color: var(--text-dim); }
 .progress-card .p-bonus {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 15px;
@@ -500,7 +505,7 @@ tr:hover td { background: var(--card-hover); }
   gap: 8px;
 }
 .tier-cell {
-  background: #0b1220;
+  background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
@@ -573,7 +578,13 @@ tr:hover td { background: var(--card-hover); }
 }
 .kassa-subtotal b { color: var(--accent); font-size: 16px; }
 
-.banknote-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; }
+.banknote-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(4, auto);
+  gap: 10px 20px;
+}
 .bn-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .bn-row .bn-label { font-size: 13px; color: var(--text-dim); min-width: 110px; }
 .bn-row input { width: 70px; padding: 6px 8px; text-align: center; }
@@ -670,13 +681,15 @@ tr:hover td { background: var(--card-hover); }
     position: absolute; left: 0; top: 0;
     width: 80mm; max-width: 80mm;
     padding: 2mm;
-    font-size: 10px;
+    font-size: 12px;
   }
-  .print-preview .doc-header { font-size: 10.5px; margin-bottom: 8px; }
-  .print-preview .doc-table { font-size: 9.5px; margin-bottom: 10px; }
+  .print-preview .doc-header { font-size: 14px; margin-bottom: 10px; font-weight: 600; }
+  .print-preview .doc-table { font-size: 12px; margin-bottom: 10px; }
+  .print-preview .doc-table th { font-size: 12.5px; font-weight: 800; }
   .print-preview .doc-table th,
-  .print-preview .doc-table td { padding: 2px 4px; }
-  .print-preview .doc-sig { font-size: 9.5px; }
+  .print-preview .doc-table td { padding: 4px 5px; }
+  .print-preview .doc-table td { font-size: 13px; font-weight: 600; }
+  .print-preview .doc-sig { font-size: 10.5px; }
   .print-preview .doc-sig-line { margin-top: 12px; }
 }
 
