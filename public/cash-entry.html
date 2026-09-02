@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kassa kiritish — KPI Bonus</title>
+<script>(function(){var t=localStorage.getItem('kpi_theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -127,7 +128,7 @@
     renderTopbar('cash');
 
     const BANKNOTES = [200000,100000,50000,20000,10000,5000,2000,1000];
-    const PAYTYPES = ['UZCARD','HUMO','Инкассация','Click','Payme','Uzum','Alif','Paynet','Yandex eats','Jiz-Biz restaurant'];
+    const PAYTYPES = ['UZCARD','HUMO','Uz Qr Kod','Инкассация','Click','Payme','Uzum','Alif','Paynet','Yandex eats','Jiz-Biz restaurant'];
 
     let spotsById = {};
     let currentEntryCreatedAt = null;
@@ -258,12 +259,35 @@
       return { expenses, banknotes, payment_types };
     }
 
+    function setFormLocked(locked) {
+      const submitBtn = document.getElementById('submit-btn');
+      document.querySelectorAll(
+        '#expense-body input, #add-expense-btn, .bn-count, .pt-amount, #submit-btn'
+      ).forEach((el) => { el.disabled = locked; });
+
+      let banner = document.getElementById('locked-banner');
+      if (locked) {
+        if (!banner) {
+          banner = document.createElement('div');
+          banner.id = 'locked-banner';
+          banner.className = 'note';
+          banner.style.borderLeftColor = 'var(--danger)';
+          banner.style.color = 'var(--danger)';
+          banner.innerHTML = '<b style="color:var(--text); display:block;">Bu kun uchun ma\'lumot allaqachon yuborilgan</b>Faqat administrator tahrirlashi mumkin.';
+          document.querySelector('.filters').after(banner);
+        }
+      } else if (banner) {
+        banner.remove();
+      }
+    }
+
     async function loadEntry() {
       const spot_id = document.getElementById('spot_id').value;
       const date = document.getElementById('entry_date').value;
       if (!spot_id || !date) return;
 
       clearForm();
+      setFormLocked(false);
       try {
         const data = await apiFetch(`/cash/entry?date=${date}&spot_id=${spot_id}`);
         if (data.entry) {
@@ -284,6 +308,10 @@
           });
           recalc();
           document.getElementById('print-btn').style.display = 'inline-block';
+
+          if (!data.entry.editable_by_current_user) {
+            setFormLocked(true);
+          }
         } else {
           currentEntryCreatedAt = null;
           document.getElementById('print-btn').style.display = 'none';
@@ -323,14 +351,15 @@
           tbody.innerHTML = data.rows.map((r) => {
             const diff = r.fakt - r.poster;
             const ok = Math.abs(diff) < 1000;
-            const diffColor = ok ? 'var(--success)' : 'var(--danger)';
+            const diffClass = ok ? 'diff-pos' : 'diff-neg';
             const diffText = (diff > 0 ? '+' : '') + Math.round(diff).toLocaleString('ru-RU');
-            const rowStyle = r.isTotal ? 'border-top:2px solid var(--border-strong); font-weight:700;' : '';
-            return `<tr style="${rowStyle}">
-              <td>${r.name}</td>
+            const rowClass = r.level === 'total' ? 'row-total' : r.level === 'subtotal' ? 'row-subtotal' : '';
+            const nameCell = r.level === 'detail' ? `<td class="indent">${r.name}</td>` : `<td>${r.name}</td>`;
+            return `<tr class="${rowClass}">
+              ${nameCell}
               <td style="text-align:right;">${Math.round(r.fakt).toLocaleString('ru-RU')}</td>
               <td style="text-align:right; color:var(--text-dim);">${Math.round(r.poster).toLocaleString('ru-RU')}</td>
-              <td style="text-align:right; color:${diffColor};">${diffText}</td>
+              <td style="text-align:right;" class="${diffClass}">${diffText}</td>
             </tr>`;
           }).join('');
         }
@@ -498,6 +527,12 @@
       buildPaytypeGrid();
       addExpenseRow();
       attachMoneyFormatting();
+
+      const user = getUser();
+      if (!user || user.role !== 'admin') {
+        document.getElementById('export-btn').style.display = 'none';
+      }
+
       await loadSpots();
       recalc();
       await loadEntry();

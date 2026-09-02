@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin panel — KPI Bonus</title>
+<script>(function(){var t=localStorage.getItem('kpi_theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -70,6 +71,35 @@
         </div>
         <button class="btn-primary" id="cm-save-btn" style="max-width:140px;">Saqlash</button>
       </div>
+    </div>
+
+    <div class="section">
+      <h2>To'lov turi xaritasi (UZCARD / HUMO / Uz Qr Kod / Click / Payme / Uzum / Alif / Paynet)</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
+        Poster'dagi karta to'lovlarini aniq kanalga bog'lash uchun. Avval "Aniqlash" tugmasini bosing —
+        so'nggi kunlardagi tranzaksiyalarda qanday to'lov usuli kodlari uchraganini ko'rasiz, so'ng har
+        biriga mos kanalni tanlang. <b>Eslatma:</b> agar Poster hisobingizda bu maydon berilmasa, bo'sh
+        chiqishi mumkin — bu holatda barcha karta to'lovlari "Карточки" (aniqlanmagan) bandida qolaveradi,
+        tizim shunday ham to'g'ri ishlayveradi, faqat kanal-kanal ajratilmaydi.
+      </p>
+      <div class="form-row">
+        <div class="field" style="max-width:280px;">
+          <label for="pm-spot-select">Filial (ixtiyoriy, bo'sh = barchasi)</label>
+          <select id="pm-spot-select"><option value="">Barchasi</option></select>
+        </div>
+        <div class="field" style="max-width:160px;">
+          <label for="pm-days">Necha kunlik</label>
+          <input type="number" id="pm-days" value="7" min="1" max="30">
+        </div>
+        <button class="btn-primary" id="pm-discover-btn" style="max-width:140px;">Aniqlash</button>
+      </div>
+      <div id="pm-discover-result" style="margin-top:14px;"></div>
+
+      <h3 style="margin-top:20px; font-size:14px;">Hozirgi xarita</h3>
+      <table>
+        <thead><tr><th>payment_method_id</th><th>Kanal</th><th>Yorliq</th></tr></thead>
+        <tbody id="pm-mapping-body"></tbody>
+      </table>
     </div>
 
     <div class="section">
@@ -170,10 +200,96 @@
         document.getElementById('cat-spot-select').innerHTML = optionsHtml;
         document.getElementById('cm-spot-select').innerHTML = optionsHtml;
         document.getElementById('ce-spot-select').innerHTML = '<option value="">Barchasi</option>' + optionsHtml;
+        document.getElementById('pm-spot-select').innerHTML = '<option value="">Barchasi</option>' + optionsHtml;
       } catch (e) {
         showToast('Filiallarni yuklab bo\'lmadi: ' + e.message, true);
       }
     }
+
+    const PM_CHANNEL_LABELS = {
+      uzcard: 'UZCARD', humo: 'HUMO', uz_qr: 'Uz Qr Kod', click: 'Click',
+      payme: 'Payme', uzum: 'Uzum', alif: 'Alif', paynet: 'Paynet',
+    };
+
+    async function loadPaymentMethodMapping() {
+      try {
+        const data = await apiFetch('/admin/payment-methods');
+        const tbody = document.getElementById('pm-mapping-body');
+        if (!data.mapping.length) {
+          tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-dim);">Hali hech narsa sozlanmagan</td></tr>';
+          return;
+        }
+        tbody.innerHTML = data.mapping.map((m) => `
+          <tr>
+            <td><code>${m.payment_method_id}</code></td>
+            <td>${PM_CHANNEL_LABELS[m.channel_key] || m.channel_key}</td>
+            <td>${m.label || '—'}</td>
+          </tr>
+        `).join('');
+      } catch (e) {
+        showToast('Xato: ' + e.message, true);
+      }
+    }
+
+    document.getElementById('pm-discover-btn').addEventListener('click', async () => {
+      const spotId = document.getElementById('pm-spot-select').value;
+      const days = document.getElementById('pm-days').value || 7;
+      const resultEl = document.getElementById('pm-discover-result');
+      resultEl.textContent = 'Qidirilmoqda... (bu bir necha daqiqa vaqt olishi mumkin)';
+
+      try {
+        const params = new URLSearchParams({ days });
+        if (spotId) params.set('spot_id', spotId);
+        const data = await apiFetch('/admin/payment-methods/discover?' + params.toString());
+
+        if (!data.found.length) {
+          resultEl.innerHTML = `<div class="note">${data.warning ? data.warning : 'Hech qanday payment_method_id topilmadi. Bu maydon sizning Poster hisobingizda mavjud emasligini bildirishi mumkin — muammo emas, tizim "Карточки" bandi orqali ishlayveradi.'}</div>`;
+          return;
+        }
+
+        resultEl.innerHTML = `
+          <table>
+            <thead><tr><th>payment_method_id</th><th>Tranzaksiyalar</th><th>Summasi</th><th>Kanal tanlang</th><th></th></tr></thead>
+            <tbody>
+              ${data.found.map((f, i) => `
+                <tr>
+                  <td><code>${f.payment_method_id}</code></td>
+                  <td>${f.count}</td>
+                  <td>${formatMoney(f.total)}</td>
+                  <td>
+                    <select id="pm-select-${i}">
+                      <option value="">— tanlang —</option>
+                      ${Object.entries(PM_CHANNEL_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
+                    </select>
+                  </td>
+                  <td><button class="action-btn" data-id="${f.payment_method_id}" data-select="pm-select-${i}">Saqlash</button></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+
+        resultEl.querySelectorAll('[data-id]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const channelKey = document.getElementById(btn.dataset.select).value;
+            if (!channelKey) { showToast('Kanalni tanlang', true); return; }
+            try {
+              await apiFetch('/admin/payment-methods', {
+                method: 'PUT',
+                body: JSON.stringify({ payment_method_id: btn.dataset.id, channel_key: channelKey }),
+              });
+              showToast('Saqlandi');
+              await loadPaymentMethodMapping();
+            } catch (e) {
+              showToast('Xato: ' + e.message, true);
+            }
+          });
+        });
+      } catch (e) {
+        resultEl.innerHTML = '';
+        showToast('Xato: ' + e.message, true);
+      }
+    });
 
     async function loadBonusConfig() {
       const wrap = document.getElementById('categories-wrap');
@@ -693,6 +809,7 @@
         await loadSpotCategories();
         await loadClientMapping();
       }
+      await loadPaymentMethodMapping();
       await loadCashEntries();
     })();
   </script>

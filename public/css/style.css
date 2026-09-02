@@ -11,8 +11,28 @@
   --success: #22c55e;
   --danger: #ef4444;
   --warn: #f59e0b;
+  --brand-purple: #5a2975;
+  --brand-purple-light: #8b5fa8;
   --radius: 10px;
 }
+
+/* ---- Oq/yorqin rejim ---- */
+[data-theme="light"] {
+  --bg: #f7f5fb;
+  --card: #ffffff;
+  --card-hover: #f2eef8;
+  --border: #ddd6e8;
+  --border-strong: #c3b8d6;
+  --text: #201a2b;
+  --text-dim: #6b6178;
+  --accent: #d4a812;
+  --accent-dark: #b8900a;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --warn: #d97706;
+}
+[data-theme="light"] .btn-primary { color: #2b2205; }
+[data-theme="light"] .receipt { box-shadow: 0 20px 40px -18px rgba(90,41,117,0.25); }
 
 * { box-sizing: border-box; }
 
@@ -117,6 +137,7 @@ button {
   padding: 14px 20px;
   border-bottom: 2px solid var(--accent);
   background: var(--card);
+  background-image: linear-gradient(90deg, rgba(90,41,117,0.10), transparent 45%);
 }
 
 .topbar .brand { font-weight: 700; }
@@ -391,8 +412,8 @@ tr:hover td { background: var(--card-hover); }
   background: #263449;
   border-radius: 2px;
 }
-.tier-seg.reached { background: var(--accent-dark); }
-.tier-seg.current { background: var(--accent); }
+.tier-seg.reached { background: var(--success); }
+.tier-seg.current { background: #16a34a; box-shadow: 0 0 6px rgba(34,197,94,0.5); }
 .tier-meta {
   display: flex;
   justify-content: space-between;
@@ -515,7 +536,7 @@ tr:hover td { background: var(--card-hover); }
 .toast.error { border-left-color: var(--danger); }
 
 /* ---- Logotip (topbar) ---- */
-.brand-logo { height: 30px; display: block; }
+.brand-logo { height: 46px; display: block; }
 .brand-sep { width: 1px; height: 20px; background: var(--border-strong); }
 
 /* ---- Kassa kiritish: rasxod, kupyura, to'lov turlari ---- */
@@ -658,3 +679,40 @@ tr:hover td { background: var(--card-hover); }
   .print-preview .doc-sig { font-size: 9.5px; }
   .print-preview .doc-sig-line { margin-top: 12px; }
 }
+
+/* ---- Yorug'/qorong'i rejim almashtirgichi (topbar) ---- */
+.theme-toggle {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 5px 10px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+}
+.theme-toggle .icon { opacity: 0.5; }
+.theme-toggle .icon.active { opacity: 1; }
+.switch-track {
+  width: 34px; height: 18px;
+  background: var(--border-strong);
+  border-radius: 999px;
+  position: relative;
+  transition: background 0.2s;
+}
+.switch-track.on { background: var(--brand-purple); }
+.switch-knob {
+  position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #fff;
+  transition: left 0.2s;
+}
+.switch-track.on .switch-knob { left: 18px; }
+
+/* ---- Poster solishtirish - ierarxik jadval (Umumiy/Наличные/Безналичные) ---- */
+.row-total td { font-weight: 700; border-top: 2px solid var(--border-strong); }
+.row-subtotal td { font-weight: 600; background: var(--card-hover); }
+td.indent { padding-left: 26px; color: var(--text-dim); }
+.hint-inline { font-size: 10.5px; color: var(--text-dim); font-weight: 400; }
+.diff-pos { color: var(--success); font-weight: 600; }
+.diff-neg { color: var(--danger); font-weight: 600; }

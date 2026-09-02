@@ -8,6 +8,9 @@ function renderTopbar(activePage) {
     ? ['kpi', 'daily_sales', 'bonus_table', 'cash']
     : (user.allowed_sections || ['kpi', 'daily_sales', 'bonus_table', 'cash']);
 
+  const currentTheme = localStorage.getItem('kpi_theme') || 'dark';
+  const isDark = currentTheme === 'dark';
+
   const nav = document.createElement('div');
   nav.className = 'topbar';
   nav.innerHTML = `
@@ -25,9 +28,29 @@ function renderTopbar(activePage) {
     </nav>
     <div class="user-info">
       <span>${user.login} ${isAdmin ? '(admin)' : ''}</span>
+      <div class="theme-toggle" id="theme-toggle-btn" title="Yorug'/qorong'i rejim">
+        <span class="icon" id="icon-sun">&#9728;</span>
+        <div class="switch-track ${isDark ? 'on' : ''}" id="switch-track"><div class="switch-knob"></div></div>
+        <span class="icon" id="icon-moon">&#9789;</span>
+      </div>
       <button class="btn-secondary" id="logout-btn">Chiqish</button>
     </div>
   `;
   document.body.prepend(nav);
   nav.querySelector('#logout-btn').addEventListener('click', logout);
+
+  const sunIcon = nav.querySelector('#icon-sun');
+  const moonIcon = nav.querySelector('#icon-moon');
+  (isDark ? moonIcon : sunIcon).classList.add('active');
+
+  nav.querySelector('#theme-toggle-btn').addEventListener('click', () => {
+    const nowDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const next = nowDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('kpi_theme', next);
+
+    nav.querySelector('#switch-track').classList.toggle('on', next === 'dark');
+    sunIcon.classList.toggle('active', next === 'light');
+    moonIcon.classList.toggle('active', next === 'dark');
+  });
 }
