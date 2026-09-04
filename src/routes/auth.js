@@ -27,7 +27,7 @@ router.post('/login', async (req, res) => {
     await pool.query('UPDATE users SET last_login_at = now() WHERE id = $1', [user.id]);
 
     const allowedSpots = JSON.parse(user.allowed_spots || '[]');
-    const allowedSections = JSON.parse(user.allowed_sections || '["kpi","daily_sales","bonus_table","cash"]');
+    const allowedSections = JSON.parse(user.allowed_sections || '["kpi","daily_sales","bonus_table","cash","savdo"]');
     const token = jwt.sign(
       { id: user.id, login: user.login, role: user.role, allowed_spots: allowedSpots, allowed_sections: allowedSections },
       JWT_SECRET,

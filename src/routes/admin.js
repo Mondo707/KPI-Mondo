@@ -186,7 +186,7 @@ router.get('/users', async (req, res) => {
     users: result.rows.map((u) => ({
       ...u,
       allowed_spots: JSON.parse(u.allowed_spots),
-      allowed_sections: JSON.parse(u.allowed_sections || '["kpi","daily_sales","bonus_table","cash"]'),
+      allowed_sections: JSON.parse(u.allowed_sections || '["kpi","daily_sales","bonus_table","cash","savdo"]'),
       is_active: !!u.is_active,
     })),
   });

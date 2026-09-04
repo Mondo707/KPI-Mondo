@@ -23,7 +23,7 @@ async function init() {
       password_plain TEXT,
       role TEXT NOT NULL DEFAULT 'viewer',
       allowed_spots TEXT NOT NULL DEFAULT '[]',
-      allowed_sections TEXT NOT NULL DEFAULT '["kpi","daily_sales","bonus_table","cash"]',
+      allowed_sections TEXT NOT NULL DEFAULT '["kpi","daily_sales","bonus_table","cash","savdo"]',
       is_active INTEGER NOT NULL DEFAULT 1,
       last_login_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT now()
@@ -96,7 +96,7 @@ async function init() {
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_plain TEXT;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_sections TEXT NOT NULL DEFAULT '["kpi","daily_sales","bonus_table","cash"]';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_sections TEXT NOT NULL DEFAULT '["kpi","daily_sales","bonus_table","cash","savdo"]';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
 
     ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS expenses TEXT NOT NULL DEFAULT '[]';

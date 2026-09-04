@@ -273,4 +273,82 @@ router.get('/export', authRequired, async (req, res) => {
   res.send(buffer);
 });
 
+// GET /api/cash/sales-summary?spot_id=&date_from=&date_to= - "Savdo" sahifasi uchun:
+// kunlik umumiy kassa (jurnal + diagramma uchun) va davr statistikasi.
+// spot_id bo'sh bo'lsa - foydalanuvchi ko'ra oladigan barcha filiallar bo'yicha kunlik yig'indi.
+router.get('/sales-summary', authRequired, requireSection('savdo'), async (req, res) => {
+  const { spot_id, date_from, date_to } = req.query;
+  if (!date_from || !date_to) {
+    return res.status(400).json({ error: 'date_from va date_to kerak' });
+  }
+
+  const allowedSpots = req.user.allowed_spots || [];
+  if (spot_id && allowedSpots.length > 0 && !allowedSpots.includes(Number(spot_id))) {
+    return res.status(403).json({ error: 'Bu filialga ruxsatingiz yo\'q' });
+  }
+
+  async function fetchDailyTotals(from, to) {
+    const conditions = ['date >= $1', 'date <= $2'];
+    const params = [from, to];
+    let i = 3;
+    if (spot_id) {
+      conditions.push(`spot_id = $${i++}`);
+      params.push(Number(spot_id));
+    } else if (allowedSpots.length > 0) {
+      const placeholders = allowedSpots.map(() => `$${i++}`).join(',');
+      conditions.push(`spot_id IN (${placeholders})`);
+      params.push(...allowedSpots);
+    }
+
+    const result = await pool.query(
+      `SELECT date, SUM(total_amount) AS total_amount
+       FROM cash_entries
+       WHERE ${conditions.join(' AND ')}
+       GROUP BY date
+       ORDER BY date ASC`,
+      params
+    );
+    return result.rows.map((r) => ({ date: r.date, total_amount: Number(r.total_amount) }));
+  }
+
+  try {
+    const entries = await fetchDailyTotals(date_from, date_to);
+
+    const total = entries.reduce((s, e) => s + e.total_amount, 0);
+    const average = entries.length ? total / entries.length : 0;
+
+    let max = null;
+    let min = null;
+    entries.forEach((e) => {
+      if (!max || e.total_amount > max.total_amount) max = e;
+      if (!min || e.total_amount < min.total_amount) min = e;
+    });
+
+    // Oldingi (bir xil uzunlikdagi) davr bilan solishtirish uchun
+    const fromDate = new Date(date_from + 'T00:00:00');
+    const toDate = new Date(date_to + 'T00:00:00');
+    const daySpan = Math.round((toDate - fromDate) / (24 * 60 * 60 * 1000)) + 1;
+    const prevTo = new Date(fromDate);
+    prevTo.setDate(prevTo.getDate() - 1);
+    const prevFrom = new Date(prevTo);
+    prevFrom.setDate(prevFrom.getDate() - (daySpan - 1));
+    const fmt = (d) => d.toISOString().slice(0, 10);
+
+    const prevEntries = await fetchDailyTotals(fmt(prevFrom), fmt(prevTo));
+    const prevTotal = prevEntries.reduce((s, e) => s + e.total_amount, 0);
+    const trendPercent = prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : null;
+
+    res.json({
+      entries,
+      total,
+      average: Math.round(average),
+      max,
+      min,
+      previous_period: { total: prevTotal, trend_percent: trendPercent !== null ? Math.round(trendPercent * 10) / 10 : null },
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
