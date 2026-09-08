@@ -192,7 +192,7 @@ const PRINT_WIDTH_PX = 576;
  */
 function renderReceiptCanvas(data) {
   const W = PRINT_WIDTH_PX;
-  const PAD = 16;
+  const PAD = 18;
   const contentW = W - PAD * 2;
 
   // Avval balandlikni bilmaymiz - shuning uchun katta canvas yaratib, keyin
@@ -213,15 +213,15 @@ function renderReceiptCanvas(data) {
     ctx.fillText(str, x, y);
   }
 
-  function line(str, size = 15, bold = false) {
+  function line(str, size = 18, bold = false) {
     text(str, PAD, size, bold);
     y += size + 6;
   }
 
-  // Jadval chizish: header (ixtiyoriy) + qatorlar, chiziqlar bilan.
-  // rows: [[chapText, o'ngText, {bold}], ...]
+  // Jadval chizish: header (ixtiyoriy, null bo'lsa yo'q) + qatorlar, chiziqlar bilan.
+  // rows: [{ l, r, bold?, center? }, ...]
   function table(headerLeft, headerRight, rows, opts = {}) {
-    const rowH = 26;
+    const rowH = 30;
     const tableTop = y;
     const colSplit = Math.round(contentW * (opts.colSplit || 0.6));
 
@@ -250,9 +250,12 @@ function renderReceiptCanvas(data) {
         ctx.lineTo(PAD + contentW, rowY + 0.5);
         ctx.stroke();
       }
-      const cy = rowY + 6;
-      ctx.font = `${r.header || r.bold ? '700' : '400'} 14px Arial, sans-serif`;
-      if (r.header) {
+      const isBold = r.header || r.bold;
+      const isCenter = r.header || r.center;
+      const fontSize = isBold ? 20 : 18; // qoraytirilgan (bold) matn 1 pog'ona kattaroq
+      const cy = rowY + (rowH - fontSize) / 2 - 2;
+      ctx.font = `${isBold ? '700' : '400'} ${fontSize}px Arial, sans-serif`;
+      if (isCenter) {
         ctx.textAlign = 'center';
         ctx.fillText(r.l, PAD + colSplit / 2, cy);
         ctx.fillText(r.r, PAD + colSplit + (contentW - colSplit) / 2, cy);
@@ -265,12 +268,12 @@ function renderReceiptCanvas(data) {
       }
     });
 
-    y = tableTop + totalH + 14;
+    y = tableTop + totalH + 14; // keyingi blokgacha tabiiy bo'shliq
   }
 
   // --- Sarlavha ---
-  line(`Торговая Точка: ${data.spotName}`, 15, true);
-  line(`Дата: ${data.date}`, 15, true);
+  line(`Торговая Точка: ${data.spotName}`, 20, true);
+  line(`Дата: ${data.date}`, 18, true);
   y += 6;
 
   // --- Rasxod jadvali (agar mavjud bo'lsa) ---
@@ -284,14 +287,15 @@ function renderReceiptCanvas(data) {
     r: b.count,
   })));
 
-  // --- Umumiy Kassa + to'lov turlari + Rasxod + Тоза ---
-  const paytypeRows = data.paytypes.map((p) => ({ l: p.name, r: p.amount.toLocaleString('ru-RU') }));
-  paytypeRows.push({ l: 'Общие Расходы', r: data.totalExpense.toLocaleString('ru-RU') });
-  paytypeRows.push({ l: 'Тоза', r: data.totalToza.toLocaleString('ru-RU'), bold: true });
-  table('Общая Касса', data.total.toLocaleString('ru-RU'), paytypeRows);
+  // --- Umumiy Kassa bo'limi - 4 ta ALOHIDA blokka bo'lingan (Расход/Купюра
+  // orasidagi kabi tabiiy bo'shliq bilan ajratilgan, oson farqlash uchun) ---
+  table('Общая Касса', data.total.toLocaleString('ru-RU'), []);
+  table(null, null, data.paytypes.map((p) => ({ l: p.name, r: p.amount.toLocaleString('ru-RU') })));
+  table(null, null, [{ l: 'Общие Расходы', r: data.totalExpense.toLocaleString('ru-RU'), center: true }]);
+  table(null, null, [{ l: 'Тоза', r: data.totalToza.toLocaleString('ru-RU'), bold: true, center: true }]);
 
   // --- Imzo qismi ---
-  line('Ответственное лицо', 14, true);
+  line('Ответственное лицо', 17, true);
   y += 22;
   ctx.beginPath();
   ctx.moveTo(PAD, y);
@@ -299,7 +303,7 @@ function renderReceiptCanvas(data) {
   ctx.stroke();
   y += 20;
 
-  line('Супервайзер', 14, true);
+  line('Супервайзер', 17, true);
   y += 22;
   ctx.beginPath();
   ctx.moveTo(PAD, y);
