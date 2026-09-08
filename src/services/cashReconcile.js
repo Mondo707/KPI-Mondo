@@ -33,6 +33,80 @@ const AMOUNT_DIVISOR = 100;
 const NONCASH_CHANNEL_ORDER = ['uzcard', 'humo', 'uz_qr', 'karta_other', 'click', 'payme', 'uzum', 'alif', 'paynet'];
 
 /**
+ * Kassa smenasi ochilish/yopilish summalari orasidagi farqni hisoblaydi.
+ * Nega kerak: xodim "Тоза" hisoblaganda kassada QOLDIRILGAN pulni (ertangi
+ * kun uchun) hisobga olmaydi - lekin Poster kunlik savdoni to'liq ko'rsatadi.
+ * Shuning uchun bu farqni Fakt tomonga qo'shib/ayirib qo'yish kerak:
+ *   - Agar Yopilish > Ochilish bo'lsa: filialda pul QOLGAN (bugungi savdodan) -> QO'SHILADI
+ *   - Agar Yopilish < Ochilish bo'lsa: pul SARFLANGAN (float'dan) -> AYIRILADI
+ *
+ * MUHIM: finance.getCashShifts summalari ham (boshqa Poster metodlari kabi)
+ * TIYIN'da kelishi ehtimoli katta deb faraz qilinmoqda - shuning uchun 100'ga
+ * bo'linadi. Agar natija 100 marta katta/kichik chiqsa, shu joyni sozlash kerak.
+ */
+async function getShiftDiff(spotId, dateStr) {
+  const { startMs, endMs } = getBusinessDayWindowEpoch(dateStr);
+
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const nextDt = new Date(Date.UTC(y, m - 1, d + 1));
+  const d1 = dateStr;
+  const d2 = `${nextDt.getUTCFullYear()}-${String(nextDt.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDt.getUTCDate()).padStart(2, '0')}`;
+
+  let allShifts = [];
+  for (const calendarDate of [d1, d2]) {
+    try {
+      const result = await poster.call('finance.getCashShifts', {
+        date_from: calendarDate,
+        date_to: calendarDate,
+        spot_id: spotId,
+      });
+      const list = Array.isArray(result) ? result : (result && result.response) || [];
+      allShifts = allShifts.concat(list);
+    } catch (e) {
+      // Metod ishlamasa, smena ma'lumotisiz davom etamiz (formula eskichasiga qoladi)
+    }
+  }
+
+  // Ikki kunlik so'rovda bitta smena ikkalasida ham qaytishi mumkin - cash_shift_id
+  // bo'yicha dublikatlarni olib tashlaymiz (aks holda ikki marta hisoblanib qoladi)
+  const uniqueShiftsMap = new Map();
+  allShifts.forEach((s) => {
+    const key = s.cash_shift_id ?? `${s.spot_id}_${s.timestart}`;
+    if (!uniqueShiftsMap.has(key)) uniqueShiftsMap.set(key, s);
+  });
+  allShifts = Array.from(uniqueShiftsMap.values());
+
+  const spotShifts = allShifts.filter((s) => {
+    if (Number(s.spot_id) !== Number(spotId)) return false;
+    const startTime = Number(s.timestart);
+    return startTime >= startMs && startTime < endMs;
+  });
+
+  if (spotShifts.length === 0) {
+    return { hasData: false, hasOpenShift: false, diff: 0, shifts: [] };
+  }
+
+  let hasOpenShift = false;
+  let totalDiff = 0;
+  const shiftsInfo = [];
+
+  for (const s of spotShifts) {
+    const isOpen = !s.timeend || Number(s.timeend) === 0 || !s.date_end || s.date_end === '0000-00-00 00:00:00';
+    if (isOpen) {
+      hasOpenShift = true;
+      continue;
+    }
+    const startAmount = (Number(s.amount_start) || 0) / AMOUNT_DIVISOR;
+    const endAmount = (Number(s.amount_end) || 0) / AMOUNT_DIVISOR;
+    const diff = endAmount - startAmount;
+    totalDiff += diff;
+    shiftsInfo.push({ start: startAmount, end: endAmount, diff });
+  }
+
+  return { hasData: true, hasOpenShift, diff: totalDiff, shifts: shiftsInfo };
+}
+
+/**
  * dash.getTransactions orqali berilgan "ish kuni" uchun barcha tranzaksiyalarni oladi
  * (payment_method_id va client_id bilan birga).
  */
@@ -53,6 +127,15 @@ async function fetchTransactionsForBusinessDay(dateStr, spotId) {
     const list = Array.isArray(result) ? result : (result.data || []);
     allTx = allTx.concat(list);
   }
+
+  // Ikki kunlik so'rovda bitta tranzaksiya ikkalasida ham qaytishi mumkin -
+  // transaction_id bo'yicha dublikatlarni olib tashlaymiz
+  const uniqueTxMap = new Map();
+  allTx.forEach((tx) => {
+    const key = tx.transaction_id;
+    if (!uniqueTxMap.has(key)) uniqueTxMap.set(key, tx);
+  });
+  allTx = Array.from(uniqueTxMap.values());
 
   return allTx.filter((tx) => {
     if (Number(tx.spot_id) !== Number(spotId)) return false;
@@ -164,9 +247,13 @@ async function getComparison(entry, options = {}) {
   const paymentTypes = JSON.parse(entry.payment_types || '{}');
   const getFakt = (name) => Number(paymentTypes[name]) || 0;
 
-  // Наличные = Тоза + Rasxod + Инкассация (Poster tomonida payed_cash)
+  // Smena ochilish/yopilish farqini olamiz (filialda qoldirilgan/float'dan
+  // sarflangan pulni Fakt tomonga to'g'irlash uchun)
+  const shiftDiffInfo = await getShiftDiff(entry.spot_id, entry.date);
+
+  // Наличные = Тоза + Rasxod + Инкассация + Smena farqi (Poster tomonida payed_cash)
   const inkassatsiya = getFakt('Инкассация');
-  const naличныеFakt = entry.toza + entry.total_expense + inkassatsiya;
+  const naличныеFakt = entry.toza + entry.total_expense + inkassatsiya + shiftDiffInfo.diff;
   const naличныеPoster = snapshot.cash;
 
   const nonCashRows = [
@@ -223,6 +310,7 @@ async function getComparison(entry, options = {}) {
     diff_percent: Math.round(diffPercent * 100) / 100,
     limit_percent: limitPercent,
     cash_diff_ok: cashDiffOk,
+    shift_info: shiftDiffInfo,
   };
 }
 
