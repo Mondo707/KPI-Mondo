@@ -364,20 +364,44 @@
             : `<span class="badge bad">Bonus bekor qilindi</span> (farq: ${data.diff_percent}%, chegara: ${data.limit_percent}%)`;
           subEl.innerHTML = `Xodim kiritgan (Fakt) va Poster'dagi haqiqiy to'lovlar. ${statusText}`;
           const tbody = document.getElementById('compare-body');
-          tbody.innerHTML = data.rows.map((r) => {
+          const rowsHtml = data.rows.map((r) => {
             const diff = r.fakt - r.poster;
             const ok = Math.abs(diff) < 1000;
             const diffClass = ok ? 'diff-pos' : 'diff-neg';
             const diffText = (diff > 0 ? '+' : '') + Math.round(diff).toLocaleString('ru-RU');
             const rowClass = r.level === 'total' ? 'row-total' : r.level === 'subtotal' ? 'row-subtotal' : '';
             const nameCell = r.level === 'detail' ? `<td class="indent">${r.name}</td>` : `<td>${r.name}</td>`;
-            return `<tr class="${rowClass}">
+            let html = `<tr class="${rowClass}">
               ${nameCell}
               <td style="text-align:right;">${Math.round(r.fakt).toLocaleString('ru-RU')}</td>
               <td style="text-align:right; color:var(--text-dim);">${Math.round(r.poster).toLocaleString('ru-RU')}</td>
               <td style="text-align:right;" class="${diffClass}">${diffText}</td>
             </tr>`;
+
+            // "Наличные оплаты" qatoridan keyin smena farqi haqida izoh qo'shamiz
+            if (r.name === 'Наличные оплаты' && data.shift_info) {
+              const si = data.shift_info;
+              if (si.hasOpenShift) {
+                html += `<tr><td colspan="4" class="shift-warn">
+                  ⚠ Smena hali yopilmagan — smena farqi hisobga olinmadi, natija to'liq aniq bo'lmasligi mumkin
+                </td></tr>`;
+              } else if (si.hasData && si.diff !== 0) {
+                const sign = si.diff > 0 ? '+' : '';
+                const shiftsText = si.shifts.map((s) =>
+                  `${Math.round(s.start).toLocaleString('ru-RU')} → ${Math.round(s.end).toLocaleString('ru-RU')}`
+                ).join(', ');
+                const explain = si.diff > 0
+                  ? 'filialda qoldirilgan pul, hisobga olindi'
+                  : "float'dan sarflangan, ayirildi";
+                html += `<tr><td colspan="4" class="shift-note">
+                  ↳ Тоза + Rasxod + Инкассация + Smena farqi: <b>${shiftsText} = ${sign}${Math.round(si.diff).toLocaleString('ru-RU')}</b> (${explain})
+                </td></tr>`;
+              }
+            }
+
+            return html;
           }).join('');
+          tbody.innerHTML = rowsHtml;
         }
       } catch (e) {
         lockedEl.style.display = 'block';
@@ -494,48 +518,19 @@
 
     async function handleUsbPrint() {
       const data = gatherReceiptData();
-      const W = 42; // 80mm qog'ozda odatiy belgilar soni (printer shriftiga qarab farq qilishi mumkin)
+      const btn = document.getElementById('usb-print-btn');
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Chop etilmoqda...';
 
       try {
-        const doc = new EscPosBuilder();
-        doc.center().bold(true).doubleSize(true).line(data.spotName).doubleSize(false).bold(false);
-        doc.line(data.date);
-        doc.left().hr(W);
-
-        if (data.expenses.length) {
-          doc.bold(true).line('RASXOD').bold(false);
-          data.expenses.forEach((e) => doc.row(e.name, e.amount.toLocaleString('ru-RU'), W));
-          doc.hr(W);
-        }
-
-        doc.bold(true).line('KUPYURA').bold(false);
-        data.banknotes.forEach((b) => {
-          if (b.count > 0) doc.row(b.value.toLocaleString('ru-RU') + " so'mlik", b.count, W);
-        });
-        doc.hr(W);
-
-        doc.bold(true).line('TO\'LOV TURLARI').bold(false);
-        data.paytypes.forEach((p) => {
-          if (p.amount > 0) doc.row(p.name, p.amount.toLocaleString('ru-RU'), W);
-        });
-        doc.hr(W);
-
-        doc.row('Umumiy rasxod', data.totalExpense.toLocaleString('ru-RU'), W);
-        doc.row('Тоза', data.totalToza.toLocaleString('ru-RU'), W);
-        doc.bold(true).row('UMUMIY KASSA', data.total.toLocaleString('ru-RU'), W).bold(false);
-        doc.hr(W);
-
-        doc.feed(1);
-        doc.line('Otvetstvennoe litso:');
-        doc.feed(2);
-        doc.line('Supervayzer:');
-        doc.feed(3);
-        doc.cut();
-
-        await sendToPrinter(doc.build());
+        await printReceiptAsImage(data);
         showToast('Chek printerga yuborildi');
       } catch (e) {
         showToast('USB orqali chop etishda xato: ' + e.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
       }
     }
 

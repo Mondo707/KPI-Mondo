@@ -44,7 +44,11 @@ function encodeText(str) {
   const bytes = [];
   for (const ch of str) {
     const code = ch.codePointAt(0);
-    if (code < 0x80) {
+    if (code === 0xA0 || code === 0x202F) {
+      // toLocaleString('ru-RU') minglik ajratgichi sifatida "uzilmaydigan bo'shliq"
+      // (U+00A0 yoki U+202F) ishlatadi - printer buni tanimaydi, oddiy bo'shliqqa almashtiramiz
+      bytes.push(0x20);
+    } else if (code < 0x80) {
       bytes.push(code);
     } else if (CP866_MAP[ch] !== undefined) {
       bytes.push(CP866_MAP[ch]);
@@ -167,4 +171,212 @@ async function pairPrinter() {
 async function sendToPrinter(bytes) {
   const device = await getOrConnectPrinter();
   await device.transferOut(cachedEndpoint, bytes);
+}
+
+// ============================================================
+// RASM (BITMAP) ORQALI CHOP ETISH
+// Ekrandagi jadval ko'rinishini (chiziqlari bilan) aynan takrorlash uchun -
+// matn buyruqlari o'rniga butun chekni rasmga aylantirib, printerga
+// "raster bit image" sifatida yuboramiz. Shunda chiqadigan natija ekrandagi
+// print-preview bilan bir xil ko'rinadi (jadval chiziqlari bilan).
+// ============================================================
+
+// 80mm qog'oz uchun odatiy bosib chiqarish kengligi (203dpi printerlar uchun
+// ~576 nuqta). Agar chek juda keng/tor chiqsa, shu qiymatni o'zgartiring
+// (masalan 512 yoki 384).
+const PRINT_WIDTH_PX = 576;
+
+/**
+ * Butun kassa hujjatini <canvas> ustiga chizadi (jadval chiziqlari bilan) va
+ * shu canvas elementini qaytaradi.
+ */
+function renderReceiptCanvas(data) {
+  const W = PRINT_WIDTH_PX;
+  const PAD = 16;
+  const contentW = W - PAD * 2;
+
+  // Avval balandlikni bilmaymiz - shuning uchun katta canvas yaratib, keyin
+  // haqiqiy balandlikka moslab qirqamiz.
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = 4000;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#000000';
+  ctx.textBaseline = 'top';
+
+  let y = PAD;
+
+  function text(str, x, size, bold) {
+    ctx.font = `${bold ? '700' : '400'} ${size}px Arial, sans-serif`;
+    ctx.fillText(str, x, y);
+  }
+
+  function line(str, size = 15, bold = false) {
+    text(str, PAD, size, bold);
+    y += size + 6;
+  }
+
+  // Jadval chizish: header (ixtiyoriy) + qatorlar, chiziqlar bilan.
+  // rows: [[chapText, o'ngText, {bold}], ...]
+  function table(headerLeft, headerRight, rows, opts = {}) {
+    const rowH = 26;
+    const tableTop = y;
+    const colSplit = Math.round(contentW * (opts.colSplit || 0.6));
+
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1;
+
+    const allRows = [];
+    if (headerLeft !== null) allRows.push({ l: headerLeft, r: headerRight, header: true });
+    rows.forEach((r) => allRows.push(r));
+
+    const totalH = allRows.length * rowH;
+
+    // Tashqi chegara
+    ctx.strokeRect(PAD + 0.5, tableTop + 0.5, contentW, totalH);
+    // Vertikal ajratuvchi chiziq
+    ctx.beginPath();
+    ctx.moveTo(PAD + colSplit + 0.5, tableTop);
+    ctx.lineTo(PAD + colSplit + 0.5, tableTop + totalH);
+    ctx.stroke();
+
+    allRows.forEach((r, i) => {
+      const rowY = tableTop + i * rowH;
+      if (i > 0) {
+        ctx.beginPath();
+        ctx.moveTo(PAD, rowY + 0.5);
+        ctx.lineTo(PAD + contentW, rowY + 0.5);
+        ctx.stroke();
+      }
+      const cy = rowY + 6;
+      ctx.font = `${r.header || r.bold ? '700' : '400'} 14px Arial, sans-serif`;
+      if (r.header) {
+        ctx.textAlign = 'center';
+        ctx.fillText(r.l, PAD + colSplit / 2, cy);
+        ctx.fillText(r.r, PAD + colSplit + (contentW - colSplit) / 2, cy);
+        ctx.textAlign = 'left';
+      } else {
+        ctx.fillText(String(r.l), PAD + 8, cy);
+        ctx.textAlign = 'right';
+        ctx.fillText(String(r.r), PAD + contentW - 8, cy);
+        ctx.textAlign = 'left';
+      }
+    });
+
+    y = tableTop + totalH + 14;
+  }
+
+  // --- Sarlavha ---
+  line(`Торговая Точка: ${data.spotName}`, 15, true);
+  line(`Дата: ${data.date}`, 15, true);
+  y += 6;
+
+  // --- Rasxod jadvali (agar mavjud bo'lsa) ---
+  if (data.expenses.length) {
+    table('Расход', 'Сумма', data.expenses.map((e) => ({ l: e.name, r: e.amount.toLocaleString('ru-RU') })));
+  }
+
+  // --- Kupyura jadvali ---
+  table('Купюра:', 'Количество', data.banknotes.map((b) => ({
+    l: `${b.value.toLocaleString('ru-RU')} so'mlik`,
+    r: b.count,
+  })));
+
+  // --- Umumiy Kassa + to'lov turlari + Rasxod + Тоза ---
+  const paytypeRows = data.paytypes.map((p) => ({ l: p.name, r: p.amount.toLocaleString('ru-RU') }));
+  paytypeRows.push({ l: 'Общие Расходы', r: data.totalExpense.toLocaleString('ru-RU') });
+  paytypeRows.push({ l: 'Тоза', r: data.totalToza.toLocaleString('ru-RU'), bold: true });
+  table('Общая Касса', data.total.toLocaleString('ru-RU'), paytypeRows);
+
+  // --- Imzo qismi ---
+  line('Ответственное лицо', 14, true);
+  y += 22;
+  ctx.beginPath();
+  ctx.moveTo(PAD, y);
+  ctx.lineTo(PAD + contentW, y);
+  ctx.stroke();
+  y += 20;
+
+  line('Супервайзер', 14, true);
+  y += 22;
+  ctx.beginPath();
+  ctx.moveTo(PAD, y);
+  ctx.lineTo(PAD + contentW, y);
+  ctx.stroke();
+  y += PAD;
+
+  // Canvas'ni haqiqiy balandlikka moslab qirqamiz
+  const finalH = Math.ceil(y);
+  const finalCanvas = document.createElement('canvas');
+  finalCanvas.width = W;
+  finalCanvas.height = finalH;
+  const fctx = finalCanvas.getContext('2d');
+  fctx.fillStyle = '#ffffff';
+  fctx.fillRect(0, 0, W, finalH);
+  fctx.drawImage(canvas, 0, 0, W, finalH, 0, 0, W, finalH);
+
+  return finalCanvas;
+}
+
+/**
+ * Canvas'ni ESC/POS "raster bit image" formatiga (GS v 0) o'giradi va
+ * printerga bo'lib-bo'lib (chunk) yuboradi (juda katta rasmni bir yo'la
+ * yubormaslik uchun, ba'zi printerlar buferi cheklangan bo'ladi).
+ */
+async function printCanvasToUsb(canvas) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  const imgData = ctx.getImageData(0, 0, W, H).data;
+  const widthBytes = Math.ceil(W / 8);
+
+  const CHUNK_H = 200;
+
+  const init = new Uint8Array([ESC, 0x40]);
+  await sendToPrinter(init);
+
+  for (let startY = 0; startY < H; startY += CHUNK_H) {
+    const h = Math.min(CHUNK_H, H - startY);
+    const data = new Uint8Array(widthBytes * h);
+
+    for (let row = 0; row < h; row++) {
+      const y = startY + row;
+      for (let xByte = 0; xByte < widthBytes; xByte++) {
+        let byte = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = xByte * 8 + bit;
+          if (x >= W) continue;
+          const idx = (y * W + x) * 4;
+          const r = imgData[idx], g = imgData[idx + 1], b = imgData[idx + 2], a = imgData[idx + 3];
+          const luminance = (r * 0.3 + g * 0.59 + b * 0.11);
+          const isBlack = a > 100 && luminance < 180;
+          if (isBlack) byte |= (0x80 >> bit);
+        }
+        data[row * widthBytes + xByte] = byte;
+      }
+    }
+
+    const xL = widthBytes & 0xff;
+    const xH = (widthBytes >> 8) & 0xff;
+    const yL = h & 0xff;
+    const yH = (h >> 8) & 0xff;
+    const header = new Uint8Array([GS, 0x76, 0x30, 0x00, xL, xH, yL, yH]);
+
+    const packet = new Uint8Array(header.length + data.length);
+    packet.set(header, 0);
+    packet.set(data, header.length);
+    await sendToPrinter(packet);
+  }
+
+  await sendToPrinter(new Uint8Array([0x0A, 0x0A, 0x0A, GS, 0x56, 0x00])); // feed + kesish
+}
+
+/**
+ * Kassa hujjatini rasm sifatida (jadval chiziqlari bilan) USB printerga chop etadi.
+ */
+async function printReceiptAsImage(data) {
+  const canvas = renderReceiptCanvas(data);
+  await printCanvasToUsb(canvas);
 }
