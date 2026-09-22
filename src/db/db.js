@@ -58,8 +58,18 @@ async function init() {
       category TEXT NOT NULL,
       tier_index INTEGER NOT NULL,
       bonus INTEGER NOT NULL,
+      min_override INTEGER,
+      max_override INTEGER,
       updated_at TIMESTAMP DEFAULT now(),
       PRIMARY KEY (category, tier_index)
+    );
+
+    CREATE TABLE IF NOT EXISTS login_history (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER,
+      login TEXT NOT NULL,
+      role TEXT,
+      logged_in_at TIMESTAMP DEFAULT now()
     );
 
     CREATE TABLE IF NOT EXISTS spot_category_config (
@@ -115,6 +125,9 @@ async function init() {
     ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS total_amount INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS poster_snapshot TEXT;
     ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS poster_synced_at TIMESTAMP;
+
+    ALTER TABLE bonus_config_overrides ADD COLUMN IF NOT EXISTS min_override INTEGER;
+    ALTER TABLE bonus_config_overrides ADD COLUMN IF NOT EXISTS max_override INTEGER;
   `);
 }
 

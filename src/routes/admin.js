@@ -2,13 +2,14 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db/db');
 const { authRequired, adminOnly } = require('../middleware/auth');
-const { getEffectiveCategories, setTierBonus } = require('../services/configService');
+const { getEffectiveCategories, setTierConfig, validateTierContinuity } = require('../services/configService');
 const { syncDate } = require('../services/scheduler');
 const { getSpotCategoryStatus, setCategoryEnabled } = require('../services/spotCategoryConfig');
 const { getMappingDetailed, setMapping, discoverPaymentMethods, KNOWN_CHANNELS } = require('../services/posterPaymentMethods');
 const { getSettingNumber, setSetting } = require('../services/appSettings');
 const { getAllProductsWithStatus, setOverride, removeOverride } = require('../services/productCategoryOverride');
 const { getProductById } = require('../services/bonusCalculator');
+const { getComparison } = require('../services/cashReconcile');
 
 const router = express.Router();
 
@@ -19,16 +20,25 @@ router.get('/bonus-config', async (req, res) => {
   res.json({ categories: await getEffectiveCategories() });
 });
 
-// PUT /api/admin/bonus-config - bitta pog'ona bonusini o'zgartirish
-// body: { category: "Лимонады", tier_index: 0, bonus: 15000 }
+// PUT /api/admin/bonus-config - bitta pog'onaning bonus summasini va/yoki min/max
+// chegarasini o'zgartirish (har biri ixtiyoriy)
+// body: { category: "Лимонады", tier_index: 0, bonus: 15000, min: 10, max: 19 }
 router.put('/bonus-config', async (req, res) => {
-  const { category, tier_index, bonus } = req.body || {};
-  if (!category || tier_index === undefined || bonus === undefined) {
-    return res.status(400).json({ error: 'category, tier_index, bonus kerak' });
+  const { category, tier_index, bonus, min, max } = req.body || {};
+  if (!category || tier_index === undefined) {
+    return res.status(400).json({ error: 'category, tier_index kerak' });
   }
   try {
-    await setTierBonus(category, Number(tier_index), Number(bonus));
-    res.json({ ok: true, categories: await getEffectiveCategories() });
+    await setTierConfig(category, Number(tier_index), {
+      bonus: bonus !== undefined ? Number(bonus) : undefined,
+      min: min !== undefined && min !== null && min !== '' ? Number(min) : undefined,
+      max: max !== undefined && max !== null && max !== '' ? Number(max) : undefined,
+    });
+
+    const categories = await getEffectiveCategories();
+    const warnings = validateTierContinuity(categories[category].tiers);
+
+    res.json({ ok: true, categories, warnings });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -403,6 +413,44 @@ router.delete('/products/:product_id/category', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// POST /api/admin/cash-entries/:id/recompute - Poster bilan solishtirishni
+// keshdan tashlab, qayta hisoblaydi (masalan Poster'da chek o'chirilgan/tuzatilgan bo'lsa)
+router.post('/cash-entries/:id/recompute', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const existing = await pool.query('SELECT * FROM cash_entries WHERE id = $1', [id]);
+    if (!existing.rows.length) return res.status(404).json({ error: 'Yozuv topilmadi' });
+
+    await pool.query('UPDATE cash_entries SET poster_snapshot = NULL, poster_synced_at = NULL WHERE id = $1', [id]);
+
+    const refreshed = await pool.query('SELECT * FROM cash_entries WHERE id = $1', [id]);
+    const comparison = await getComparison(refreshed.rows[0], { forceUnlock: true });
+    res.json(comparison);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/admin/login-history?user_id=&date_from=&date_to= - kim qachon kirgani
+router.get('/login-history', async (req, res) => {
+  const { user_id, date_from, date_to } = req.query;
+  const conditions = [];
+  const params = [];
+  let i = 1;
+
+  if (user_id) { conditions.push(`user_id = $${i++}`); params.push(Number(user_id)); }
+  if (date_from) { conditions.push(`logged_in_at >= $${i++}`); params.push(date_from); }
+  if (date_to) { conditions.push(`logged_in_at <= $${i++}::date + interval '1 day'`); params.push(date_to); }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const result = await pool.query(
+    `SELECT id, user_id, login, role, logged_in_at FROM login_history ${where} ORDER BY logged_in_at DESC LIMIT 500`,
+    params
+  );
+  res.json({ entries: result.rows });
 });
 
 module.exports = router;

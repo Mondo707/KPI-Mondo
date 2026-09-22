@@ -25,6 +25,10 @@ router.post('/login', async (req, res) => {
     }
 
     await pool.query('UPDATE users SET last_login_at = now() WHERE id = $1', [user.id]);
+    await pool.query(
+      'INSERT INTO login_history (user_id, login, role, logged_in_at) VALUES ($1, $2, $3, now())',
+      [user.id, user.login, user.role]
+    );
 
     const allowedSpots = JSON.parse(user.allowed_spots || '[]');
     const allowedSections = JSON.parse(user.allowed_sections || '["kpi","daily_sales","bonus_table","cash","savdo"]');
