@@ -90,6 +90,13 @@ async function init() {
       value TEXT NOT NULL,
       updated_at TIMESTAMP DEFAULT now()
     );
+
+    CREATE TABLE IF NOT EXISTS product_category_overrides (
+      poster_product_id TEXT PRIMARY KEY,
+      product_name TEXT,
+      category TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT now()
+    );
   `);
 
   // Eski bazalarda yangi ustunlar bo'lmasligi mumkin - xavfsiz migratsiya

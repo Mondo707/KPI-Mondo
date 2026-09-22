@@ -7,6 +7,8 @@ const { syncDate } = require('../services/scheduler');
 const { getSpotCategoryStatus, setCategoryEnabled } = require('../services/spotCategoryConfig');
 const { getMappingDetailed, setMapping, discoverPaymentMethods, KNOWN_CHANNELS } = require('../services/posterPaymentMethods');
 const { getSettingNumber, setSetting } = require('../services/appSettings');
+const { getAllProductsWithStatus, setOverride, removeOverride } = require('../services/productCategoryOverride');
+const { getProductById } = require('../services/bonusCalculator');
 
 const router = express.Router();
 
@@ -361,6 +363,46 @@ router.put('/cash-diff-limit', async (req, res) => {
   }
   await setSetting('cash_diff_limit_percent', Number(cash_diff_limit_percent));
   res.json({ ok: true });
+});
+
+// GET /api/admin/products?only_unmatched=true - Poster'dagi barcha mahsulotlar va
+// ularning bonus kategoriyasiga bog'lanish holati (avtomatik/qo'lda/bog'lanmagan)
+router.get('/products', async (req, res) => {
+  try {
+    const products = await getAllProductsWithStatus(getProductById());
+    const { only_unmatched } = req.query;
+    const filtered = only_unmatched === 'true' ? products.filter((p) => p.source === 'unmatched') : products;
+    res.json({ products: filtered });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/admin/products/:product_id/category - mahsulotni qo'lda bonus
+// kategoriyasiga bog'lash (yangi qo'shilgan, hali avtomatik moslashtirilmagan mahsulotlar uchun)
+// body: { category: "Лимонады", product_name: "Latte Karamel 300мл" }
+router.put('/products/:product_id/category', async (req, res) => {
+  const { product_id } = req.params;
+  const { category, product_name } = req.body || {};
+  if (!category) {
+    return res.status(400).json({ error: 'category kerak' });
+  }
+  try {
+    await setOverride(product_id, product_name, category);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/admin/products/:product_id/category - qo'lda bog'lashni bekor qilish
+router.delete('/products/:product_id/category', async (req, res) => {
+  try {
+    await removeOverride(req.params.product_id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;

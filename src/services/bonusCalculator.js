@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { getEffectiveCategories } = require('./configService');
 const { getDisabledCategories } = require('./spotCategoryConfig');
+const { getOverridesMap } = require('./productCategoryOverride');
 
 const PRODUCT_MAP_PATH = path.join(__dirname, '..', 'data', 'productMap.json');
 
@@ -41,16 +42,28 @@ reloadProductMap();
  * @param {Array} transactions Poster transactions.getTransactions dan olingan .data massivi
  * @returns {Map<string, number>} kategoriya nomi -> jami miqdor (dona yoki kg)
  */
-function aggregateQuantities(transactions) {
+async function aggregateQuantities(transactions) {
   const totals = new Map();
+  // Admin panelda qo'lda bog'langan mahsulotlar (yangi qo'shilgan, hali avtomatik
+  // moslashtirilmagan) - bular productMap.json'dan USTUN turadi.
+  const overrides = await getOverridesMap();
 
   for (const tx of transactions) {
     if (!tx.products) continue;
     for (const item of tx.products) {
+      const num = Number(item.num) || 0;
+      const overrideCategory = overrides.get(String(item.product_id));
+
+      if (overrideCategory) {
+        // Qo'lda bog'langan mahsulot - dona hisobida (kg_per_unit yo'q deb faraz qilinadi)
+        const prev = totals.get(overrideCategory) || 0;
+        totals.set(overrideCategory, prev + num);
+        continue;
+      }
+
       const info = productById.get(Number(item.product_id));
       if (!info || !info.counts_for_bonus) continue;
 
-      const num = Number(item.num) || 0;
       const amount = info.kg_per_unit ? num * info.kg_per_unit : num;
 
       const prev = totals.get(info.bonus_category) || 0;
@@ -89,7 +102,7 @@ async function tierBonus(category, quantity) {
  *   hisobga olinmaydi (admin panelda sozlanadi).
  */
 async function calculateDailyBonus(transactions, options = {}) {
-  const quantities = aggregateQuantities(transactions);
+  const quantities = await aggregateQuantities(transactions);
   const breakdown = [];
   let total = 0;
 
@@ -164,6 +177,14 @@ function checkCashDiff(enteredAmount, posterCashTotal, limitPercent = 0.3) {
   return { ok: diffPercent <= limitPercent, diffPercent: Math.round(diffPercent * 100) / 100 };
 }
 
+/**
+ * Avtomatik moslashtirilgan mahsulotlar xaritasini qaytaradi (faqat o'qish uchun) -
+ * admin panelda "yangi/bog'lanmagan mahsulotlar"ni aniqlash uchun kerak.
+ */
+function getProductById() {
+  return productById;
+}
+
 module.exports = {
   aggregateQuantities,
   tierBonus,
@@ -173,4 +194,5 @@ module.exports = {
   reloadProductMap,
   computePosterPaymentBreakdown,
   sumByClientId,
+  getProductById,
 };

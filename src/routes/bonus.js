@@ -57,7 +57,7 @@ router.get('/journal', authRequired, requireAnySection('kpi'), async (req, res) 
 // GET /api/bonus?date_from=2026-08-01&date_to=2026-08-23&spot_id=6&category=Лимонады
 // KPI sahifasi va Kunlik savdo sahifasi ikkalasi ham shu endpointdan foydalanadi.
 router.get('/', authRequired, requireAnySection('kpi', 'daily_sales'), async (req, res) => {
-  const { date_from, date_to, spot_id, category } = req.query;
+  const { date_from, date_to, spot_id, category, categories } = req.query;
 
   if (!date_from || !date_to) {
     return res.status(400).json({ error: 'date_from va date_to kerak' });
@@ -83,7 +83,15 @@ router.get('/', authRequired, requireAnySection('kpi', 'daily_sales'), async (re
     conditions.push(`spot_id = $${i++}`);
     params.push(Number(spot_id));
   }
-  if (category) {
+  if (categories) {
+    // Bir nechta kategoriya (vergul bilan ajratilgan) - Kunlik savdo sahifasida ishlatiladi
+    const categoryList = categories.split(',').map((c) => c.trim()).filter(Boolean);
+    if (categoryList.length) {
+      const placeholders = categoryList.map(() => `$${i++}`).join(',');
+      conditions.push(`category IN (${placeholders})`);
+      params.push(...categoryList);
+    }
+  } else if (category) {
     conditions.push(`category = $${i++}`);
     params.push(category);
   }
