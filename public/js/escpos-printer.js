@@ -329,6 +329,28 @@ function renderReceiptCanvas(data) {
  * printerga bo'lib-bo'lib (chunk) yuboradi (juda katta rasmni bir yo'la
  * yubormaslik uchun, ba'zi printerlar buferi cheklangan bo'ladi).
  */
+/**
+ * Chop etib bo'lgach, USB portni BO'SHATADI - shunda Poster (yoki boshqa dastur)
+ * xuddi shu printerdan yana foydalana oladi. Buni qilmasak, brauzer printerni
+ * doimiy "band" qilib turadi va Poster o'z chekini chiqara olmay qoladi.
+ */
+async function releasePrinter() {
+  if (!cachedDevice) return;
+  try {
+    await cachedDevice.releaseInterface(cachedInterface);
+  } catch (e) {
+    // e'tiborsiz - interfeys allaqachon bo'shatilgan bo'lishi mumkin
+  }
+  try {
+    await cachedDevice.close();
+  } catch (e) {
+    // e'tiborsiz
+  }
+  cachedDevice = null;
+  cachedEndpoint = null;
+  cachedInterface = null;
+}
+
 async function printCanvasToUsb(canvas) {
   const ctx = canvas.getContext('2d');
   const W = canvas.width;
@@ -382,5 +404,11 @@ async function printCanvasToUsb(canvas) {
  */
 async function printReceiptAsImage(data) {
   const canvas = renderReceiptCanvas(data);
-  await printCanvasToUsb(canvas);
+  try {
+    await printCanvasToUsb(canvas);
+  } finally {
+    // Chop etish muvaffaqiyatli bo'lsa ham, xato bo'lsa ham - portni bo'shatamiz,
+    // shunda Poster keyinroq printerga muammosiz murojaat qila oladi.
+    await releasePrinter();
+  }
 }

@@ -34,6 +34,33 @@
       <div id="categories-wrap">Yuklanmoqda...</div>
     </div>
 
+    <div class="section" style="border-color: var(--brand-purple);">
+      <h2>Mahsulotlarni kategoriyaga bog'lash <span id="unmatched-count-badge"></span></h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
+        Poster'da yangi mahsulot qo'shilsa, u avtomatik hech qaysi bonus kategoriyasiga tushmaydi. Shu yerda
+        kategoriyasini tanlab "Saqlash"ni bossangiz, u darhol KPI va Kunlik savdo statistikasiga qo'shiladi.
+      </p>
+      <div class="form-row">
+        <div class="field" style="max-width:280px;">
+          <label for="products-filter">Ko'rsatish</label>
+          <select id="products-filter">
+            <option value="unmatched">Faqat bog'lanmaganlar</option>
+            <option value="all">Barcha mahsulotlar</option>
+          </select>
+        </div>
+        <div class="field" style="flex:1;">
+          <label for="products-search">Qidirish</label>
+          <input type="text" id="products-search" placeholder="Mahsulot nomi...">
+        </div>
+        <button class="btn-primary" id="products-refresh-btn" style="max-width:140px;">Yangilash</button>
+      </div>
+      <table>
+        <thead><tr><th>Mahsulot nomi</th><th>Holati</th><th>Kategoriya</th><th></th></tr></thead>
+        <tbody id="products-body"></tbody>
+      </table>
+      <div class="empty-state" id="products-empty" style="display:none;">Mahsulotlar topilmadi</div>
+    </div>
+
     <div class="section">
       <h2>Filial bo'yicha kategoriya sozlamalari</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
@@ -205,6 +232,105 @@
     renderTopbar('admin');
 
     let spotsList = [];
+
+    let allProductsCache = [];
+
+    async function loadProducts() {
+      const tbody = document.getElementById('products-body');
+      const emptyEl = document.getElementById('products-empty');
+      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-dim);">Yuklanmoqda... (bu bir necha soniya olishi mumkin)</td></tr>';
+
+      try {
+        const data = await apiFetch('/admin/products');
+        allProductsCache = data.products;
+        const unmatchedCount = data.products.filter((p) => p.source === 'unmatched').length;
+        document.getElementById('unmatched-count-badge').innerHTML = unmatchedCount > 0
+          ? `<span class="badge bad">${unmatchedCount} ta bog'lanmagan</span>`
+          : '<span class="badge ok">Hammasi bog\'langan</span>';
+        renderProductsTable();
+      } catch (e) {
+        tbody.innerHTML = '';
+        emptyEl.style.display = 'block';
+        emptyEl.textContent = 'Yuklashda xato: ' + e.message;
+      }
+    }
+
+    function renderProductsTable() {
+      const filterMode = document.getElementById('products-filter').value;
+      const search = document.getElementById('products-search').value.trim().toLowerCase();
+
+      let list = allProductsCache;
+      if (filterMode === 'unmatched') list = list.filter((p) => p.source === 'unmatched');
+      if (search) list = list.filter((p) => (p.name || '').toLowerCase().includes(search));
+
+      const tbody = document.getElementById('products-body');
+      const emptyEl = document.getElementById('products-empty');
+
+      if (!list.length) {
+        tbody.innerHTML = '';
+        emptyEl.style.display = 'block';
+        emptyEl.textContent = 'Mahsulotlar topilmadi';
+        return;
+      }
+      emptyEl.style.display = 'none';
+
+      const categoryOptions = (selected) => CATEGORY_ORDER.map(
+        (c) => `<option value="${c}" ${c === selected ? 'selected' : ''}>${c}</option>`
+      ).join('');
+
+      tbody.innerHTML = list.map((p) => {
+        const statusBadge = p.source === 'auto'
+          ? '<span class="badge ok">Avtomatik</span>'
+          : p.source === 'manual'
+            ? '<span class="badge ok">Qo\'lda bog\'langan</span>'
+            : '<span class="badge bad">Bog\'lanmagan</span>';
+
+        return `<tr data-product-id="${p.product_id}">
+          <td>${p.name}</td>
+          <td>${statusBadge}</td>
+          <td>
+            <select class="product-category-select" ${p.source === 'auto' ? 'disabled' : ''}>
+              <option value="">— tanlang —</option>
+              ${categoryOptions(p.category)}
+            </select>
+          </td>
+          <td>
+            ${p.source === 'auto'
+              ? '<span style="color:var(--text-dim); font-size:12px;">Nomdan avtomatik</span>'
+              : `<button class="action-btn save-product-btn">Saqlash</button>`}
+          </td>
+        </tr>`;
+      }).join('');
+
+      tbody.querySelectorAll('.save-product-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const tr = btn.closest('tr');
+          const productId = tr.dataset.productId;
+          const select = tr.querySelector('.product-category-select');
+          const category = select.value;
+          const productName = tr.querySelector('td').textContent;
+
+          if (!category) {
+            showToast('Kategoriyani tanlang', true);
+            return;
+          }
+          try {
+            await apiFetch(`/admin/products/${productId}/category`, {
+              method: 'PUT',
+              body: JSON.stringify({ category, product_name: productName }),
+            });
+            showToast(`"${productName}" — "${category}" kategoriyasiga bog'landi`);
+            await loadProducts();
+          } catch (e) {
+            showToast('Xato: ' + e.message, true);
+          }
+        });
+      });
+    }
+
+    document.getElementById('products-refresh-btn').addEventListener('click', loadProducts);
+    document.getElementById('products-filter').addEventListener('change', renderProductsTable);
+    document.getElementById('products-search').addEventListener('input', renderProductsTable);
 
     async function loadCashDiffLimit() {
       try {
@@ -855,6 +981,7 @@
       await loadCashDiffLimit();
       await loadSpotsForForm();
       await loadBonusConfig();
+      await loadProducts();
       await loadUsers();
 
       if (spotsList.length) {

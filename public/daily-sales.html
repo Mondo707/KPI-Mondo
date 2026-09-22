@@ -6,6 +6,64 @@
 <title>Kunlik savdo — KPI Bonus</title>
 <script>(function(){var t=localStorage.getItem('kpi_theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
 <link rel="stylesheet" href="/css/style.css">
+<style>
+  .multiselect { position: relative; }
+  .ms-box {
+    min-width: 240px;
+    min-height: 40px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    cursor: pointer;
+  }
+  .ms-chip {
+    background: rgba(245,197,24,0.15);
+    color: var(--accent);
+    border: 1px solid var(--accent-dark);
+    border-radius: 999px;
+    padding: 3px 8px 3px 12px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .ms-chip .x { cursor:pointer; opacity:0.7; font-weight:700; }
+  .ms-chip .x:hover { opacity:1; color: var(--danger); }
+  .ms-placeholder { color: var(--text-dim); font-size: 13px; }
+  .ms-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    width: 280px;
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    z-index: 20;
+    padding: 6px;
+    display: none;
+  }
+  .ms-dropdown.open { display: block; }
+  .ms-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .ms-option:hover { background: var(--card-hover); }
+  .ms-option input { margin: 0; }
+</style>
 </head>
 <body>
   <div class="container">
@@ -24,11 +82,12 @@
           <option value="">Barchasi</option>
         </select>
       </div>
-      <div class="field">
-        <label for="category">Mahsulot kategoriyasi</label>
-        <select id="category">
-          <option value="">Barchasi</option>
-        </select>
+      <div class="field multiselect">
+        <label>Mahsulot kategoriyasi</label>
+        <div class="ms-box" id="ms-box">
+          <span class="ms-placeholder" id="ms-placeholder">Barchasi</span>
+        </div>
+        <div class="ms-dropdown" id="ms-dropdown"></div>
       </div>
       <button class="btn-primary apply-btn" id="apply-btn" style="max-width:140px;">Qo'llash</button>
     </div>
@@ -55,6 +114,7 @@
 
     let spotsById = {};
     let tiersConfig = {};
+    let selectedCategories = []; // bo'sh massiv = "Barchasi"
 
     function setDefaultDates() {
       const today = todayStr();
@@ -87,15 +147,54 @@
       }
     }
 
-    function populateCategories() {
-      const select = document.getElementById('category');
-      CATEGORY_ORDER.forEach((c) => {
-        const opt = document.createElement('option');
-        opt.value = c;
-        opt.textContent = c;
-        select.appendChild(opt);
+    // --- Ko'p tanlovli kategoriya (multi-select "chip") ---
+    function renderMsChips() {
+      const box = document.getElementById('ms-box');
+      if (!selectedCategories.length) {
+        box.innerHTML = '<span class="ms-placeholder">Barchasi</span>';
+        return;
+      }
+      box.innerHTML = selectedCategories.map((c) => `
+        <span class="ms-chip" data-cat="${c}">${c} <span class="x" data-remove="${c}">&times;</span></span>
+      `).join('');
+      box.querySelectorAll('.x').forEach((x) => {
+        x.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectedCategories = selectedCategories.filter((c) => c !== x.dataset.remove);
+          renderMsChips();
+          renderMsDropdown();
+        });
       });
     }
+
+    function renderMsDropdown() {
+      const dropdown = document.getElementById('ms-dropdown');
+      dropdown.innerHTML = CATEGORY_ORDER.map((c) => `
+        <label class="ms-option">
+          <input type="checkbox" value="${c}" ${selectedCategories.includes(c) ? 'checked' : ''}>
+          ${c}
+        </label>
+      `).join('');
+      dropdown.querySelectorAll('input').forEach((cb) => {
+        cb.addEventListener('change', () => {
+          if (cb.checked) {
+            selectedCategories.push(cb.value);
+          } else {
+            selectedCategories = selectedCategories.filter((c) => c !== cb.value);
+          }
+          renderMsChips();
+        });
+      });
+    }
+
+    document.getElementById('ms-box').addEventListener('click', () => {
+      document.getElementById('ms-dropdown').classList.toggle('open');
+    });
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.multiselect')) {
+        document.getElementById('ms-dropdown').classList.remove('open');
+      }
+    });
 
     // Filial vertikal (qatorlar), kategoriya gorizontal (ustunlar). Davr bo'yicha
     // miqdorlar yig'ib (summalab) ko'rsatiladi - bitta kun ham, bir necha kun ham bo'lishi mumkin.
@@ -103,11 +202,10 @@
       const date_from = document.getElementById('date_from').value;
       const date_to = document.getElementById('date_to').value;
       const spot_id = document.getElementById('spot_id').value;
-      const category = document.getElementById('category').value;
 
       const params = new URLSearchParams({ date_from, date_to });
       if (spot_id) params.set('spot_id', spot_id);
-      if (category) params.set('category', category);
+      if (selectedCategories.length) params.set('categories', selectedCategories.join(','));
 
       try {
         const data = await apiFetch('/bonus?' + params.toString());
@@ -115,10 +213,12 @@
         document.getElementById('matrix-period').textContent =
           date_from === date_to ? date_from : `${date_from} — ${date_to}`;
 
-        // Ustunlar: agar kategoriya tanlangan bo'lsa faqat o'shani, aks holda
+        // Ustunlar: agar kategoriya(lar) tanlangan bo'lsa faqat o'shalar, aks holda
         // belgilangan tartibda hammasini ko'rsatamiz.
         const allCats = sortByCategoryOrder(Object.keys(tiersConfig));
-        const categories = category ? [category] : allCats;
+        const categories = selectedCategories.length
+          ? sortByCategoryOrder(selectedCategories)
+          : allCats;
 
         // Qatorlar: agar filial tanlangan bo'lsa faqat o'shani, aks holda
         // foydalanuvchi ko'ra oladigan barcha filiallarni.
@@ -168,7 +268,8 @@
 
     (async function init() {
       setDefaultDates();
-      populateCategories();
+      renderMsChips();
+      renderMsDropdown();
       await loadTiersConfig();
       await loadSpots();
       await loadMatrix();
