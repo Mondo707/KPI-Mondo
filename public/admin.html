@@ -222,6 +222,33 @@
       </table>
       <div class="empty-state" id="cash-entries-empty" style="display:none;">Yozuv topilmadi</div>
     </div>
+
+    <div class="section">
+      <h2>Kirish tarixi</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
+        Har bir foydalanuvchi qachon tizimga kirganini ko'rish uchun.
+      </p>
+      <div class="form-row">
+        <div class="field" style="max-width:220px;">
+          <label for="lh-user-select">Foydalanuvchi</label>
+          <select id="lh-user-select"><option value="">Barchasi</option></select>
+        </div>
+        <div class="field">
+          <label for="lh-from">Sanadan</label>
+          <input type="date" id="lh-from">
+        </div>
+        <div class="field">
+          <label for="lh-to">Sanagacha</label>
+          <input type="date" id="lh-to">
+        </div>
+        <button class="btn-primary" id="lh-load-btn" style="max-width:140px;">Qidirish</button>
+      </div>
+      <table style="margin-top:14px;">
+        <thead><tr><th>Login</th><th>Rol</th><th>Kirish vaqti</th></tr></thead>
+        <tbody id="login-history-body"></tbody>
+      </table>
+      <div class="empty-state" id="login-history-empty" style="display:none;">Yozuv topilmadi</div>
+    </div>
   </div>
 
   <script src="/js/api.js"></script>
@@ -483,30 +510,57 @@
             <div class="tier-grid">
               ${cfg.tiers.map((t, idx) => `
                 <div class="tier-cell">
-                  <div class="range">${t.min}${t.max ? '–' + t.max : '+'} ${cfg.unit === 'kg' ? 'kg' : 'dona'}</div>
-                  <input type="number" data-category="${category}" data-tier="${idx}" value="${t.bonus}">
+                  <div class="range-inputs" style="display:flex; align-items:center; gap:4px; margin-bottom:6px;">
+                    <input type="number" class="tier-min" data-category="${category}" data-tier="${idx}" value="${t.min}" style="width:52px; padding:4px 5px; font-size:12px; text-align:center;">
+                    <span style="color:var(--text-dim); font-size:12px;">–</span>
+                    ${t.max
+                      ? `<input type="number" class="tier-max" data-category="${category}" data-tier="${idx}" value="${t.max}" style="width:52px; padding:4px 5px; font-size:12px; text-align:center;">`
+                      : `<input type="text" value="∞" disabled style="width:52px; padding:4px 5px; font-size:12px; text-align:center; opacity:0.5;">`}
+                  </div>
+                  <div style="font-size:10px; color:var(--text-dim); margin-bottom:6px;">${cfg.unit === 'kg' ? 'kg' : 'dona'}</div>
+                  <input type="number" class="tier-bonus" data-category="${category}" data-tier="${idx}" value="${t.bonus}">
                 </div>
               `).join('')}
             </div>
+            <div class="tier-warning" data-warning-for="${category}" style="display:none; margin-top:8px; font-size:11.5px; color:var(--danger); background:rgba(239,68,68,0.08); border:1px solid var(--danger); border-radius:6px; padding:6px 10px;"></div>
           `;
           wrap.appendChild(row);
         });
 
-        wrap.querySelectorAll('input[type=number]').forEach((input) => {
-          input.addEventListener('change', async () => {
-            const category = input.dataset.category;
-            const tier_index = Number(input.dataset.tier);
-            const bonus = Number(input.value);
-            try {
-              await apiFetch('/admin/bonus-config', {
-                method: 'PUT',
-                body: JSON.stringify({ category, tier_index, bonus }),
-              });
-              showToast(`"${category}" yangilandi`);
-            } catch (e) {
-              showToast('Xato: ' + e.message, true);
+        async function saveTierField(input) {
+          const category = input.dataset.category;
+          const tier_index = Number(input.dataset.tier);
+          const row = input.closest('.category-row');
+
+          const bonusInput = row.querySelector(`.tier-bonus[data-tier="${tier_index}"]`);
+          const minInput = row.querySelector(`.tier-min[data-tier="${tier_index}"]`);
+          const maxInput = row.querySelector(`.tier-max[data-tier="${tier_index}"]`);
+
+          const body = { category, tier_index, bonus: Number(bonusInput.value) };
+          if (minInput) body.min = Number(minInput.value);
+          if (maxInput) body.max = Number(maxInput.value);
+
+          try {
+            const result = await apiFetch('/admin/bonus-config', {
+              method: 'PUT',
+              body: JSON.stringify(body),
+            });
+            showToast(`"${category}" yangilandi`);
+
+            const warnEl = row.querySelector(`[data-warning-for="${category}"]`);
+            if (result.warnings && result.warnings.length) {
+              warnEl.style.display = 'block';
+              warnEl.innerHTML = '⚠️ ' + result.warnings.join('<br>⚠️ ');
+            } else {
+              warnEl.style.display = 'none';
             }
-          });
+          } catch (e) {
+            showToast('Xato: ' + e.message, true);
+          }
+        }
+
+        wrap.querySelectorAll('.tier-bonus, .tier-min, .tier-max').forEach((input) => {
+          input.addEventListener('change', () => saveTierField(input));
         });
       } catch (e) {
         wrap.innerHTML = '<div class="error-msg">Yuklashda xato: ' + e.message + '</div>';
@@ -597,6 +651,13 @@
       try {
         const data = await apiFetch('/admin/users');
         tbody.innerHTML = '';
+
+        const lhSelect = document.getElementById('lh-user-select');
+        if (lhSelect) {
+          lhSelect.innerHTML = '<option value="">Barchasi</option>' +
+            data.users.map((u) => `<option value="${u.id}">${u.login}</option>`).join('');
+        }
+
         data.users.forEach((u) => {
           const spotsNames = u.allowed_spots.length
             ? u.allowed_spots.map((id) => {
@@ -876,6 +937,42 @@
       }
     });
 
+    async function loadLoginHistory() {
+      const user_id = document.getElementById('lh-user-select').value;
+      const date_from = document.getElementById('lh-from').value;
+      const date_to = document.getElementById('lh-to').value;
+
+      const params = new URLSearchParams();
+      if (user_id) params.set('user_id', user_id);
+      if (date_from) params.set('date_from', date_from);
+      if (date_to) params.set('date_to', date_to);
+
+      try {
+        const data = await apiFetch('/admin/login-history?' + params.toString());
+        const tbody = document.getElementById('login-history-body');
+        const emptyEl = document.getElementById('login-history-empty');
+        tbody.innerHTML = '';
+
+        if (!data.entries.length) {
+          emptyEl.style.display = 'block';
+          return;
+        }
+        emptyEl.style.display = 'none';
+
+        tbody.innerHTML = data.entries.map((e) => `
+          <tr>
+            <td>${e.login}</td>
+            <td>${e.role || '—'}</td>
+            <td>${new Date(e.logged_in_at).toLocaleString('ru-RU')}</td>
+          </tr>
+        `).join('');
+      } catch (e) {
+        showToast('Kirish tarixini yuklashda xato: ' + e.message, true);
+      }
+    }
+
+    document.getElementById('lh-load-btn').addEventListener('click', loadLoginHistory);
+
     async function loadCashEntries() {
       const spot_id = document.getElementById('ce-spot-select').value;
       const date_from = document.getElementById('ce-from').value;
@@ -910,6 +1007,7 @@
             <td><b>${formatMoney(e.total_amount)}</b></td>
             <td>
               <button class="action-btn" data-act="ce-edit" data-id="${e.id}">Tahrirlash</button>
+              <button class="action-btn" data-act="ce-recompute" data-id="${e.id}">Qayta hisoblash</button>
               <button class="action-btn danger" data-act="ce-delete" data-id="${e.id}">O'chirish</button>
             </td>
           `;
@@ -925,6 +1023,23 @@
               await loadCashEntries();
             } catch (err) {
               showToast('Xato: ' + err.message, true);
+            }
+          });
+        });
+
+        tbody.querySelectorAll('[data-act="ce-recompute"]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Poster bilan solishtirish qayta hisoblansinmi? (masalan Poster\'da chek o\'chirilgan/tuzatilgan bo\'lsa)')) return;
+            btn.disabled = true;
+            btn.textContent = 'Hisoblanmoqda...';
+            try {
+              await apiFetch(`/admin/cash-entries/${btn.dataset.id}/recompute`, { method: 'POST' });
+              showToast('Qayta hisoblandi');
+            } catch (err) {
+              showToast('Xato: ' + err.message, true);
+            } finally {
+              btn.disabled = false;
+              btn.textContent = 'Qayta hisoblash';
             }
           });
         });
@@ -990,6 +1105,13 @@
       }
       await loadPaymentMethodMapping();
       await loadCashEntries();
+
+      const lhToday = todayStr();
+      const lhMonthAgo = new Date();
+      lhMonthAgo.setDate(lhMonthAgo.getDate() - 30);
+      document.getElementById('lh-from').value = lhMonthAgo.toISOString().slice(0, 10);
+      document.getElementById('lh-to').value = lhToday;
+      await loadLoginHistory();
     })();
   </script>
 </body>
