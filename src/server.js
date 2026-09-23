@@ -11,6 +11,7 @@ const bonusRoutes = require('./routes/bonus');
 const spotsRoutes = require('./routes/spots');
 const adminRoutes = require('./routes/admin');
 const cashRoutes = require('./routes/cash');
+const loginHistoryRoutes = require('./routes/loginHistory');
 const { startScheduler } = require('./services/scheduler');
 
 const app = express();
@@ -29,6 +30,7 @@ app.use('/api/bonus', bonusRoutes);
 app.use('/api/spots', spotsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/cash', cashRoutes);
+app.use('/api/login-history', loginHistoryRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

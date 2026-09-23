@@ -42,7 +42,7 @@ function requireSection(section) {
     if (!req.user) return res.status(401).json({ error: 'Token topilmadi' });
     if (req.user.role === 'admin') return next();
 
-    const allowed = req.user.allowed_sections || ['kpi', 'daily_sales', 'bonus_table', 'cash'];
+    const allowed = req.user.allowed_sections || ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history'];
     if (!allowed.includes(section)) {
       return res.status(403).json({ error: 'Bu bo\'limga ruxsatingiz yo\'q' });
     }
@@ -60,7 +60,7 @@ function requireAnySection(...sections) {
     if (!req.user) return res.status(401).json({ error: 'Token topilmadi' });
     if (req.user.role === 'admin') return next();
 
-    const allowed = req.user.allowed_sections || ['kpi', 'daily_sales', 'bonus_table', 'cash'];
+    const allowed = req.user.allowed_sections || ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history'];
     if (!sections.some((s) => allowed.includes(s))) {
       return res.status(403).json({ error: 'Bu bo\'limga ruxsatingiz yo\'q' });
     }

@@ -198,7 +198,7 @@ router.get('/users', async (req, res) => {
     users: result.rows.map((u) => ({
       ...u,
       allowed_spots: JSON.parse(u.allowed_spots),
-      allowed_sections: JSON.parse(u.allowed_sections || '["kpi","daily_sales","bonus_table","cash","savdo"]'),
+      allowed_sections: JSON.parse(u.allowed_sections || '["kpi","daily_sales","bonus_table","cash","savdo","login_history"]'),
       is_active: !!u.is_active,
     })),
   });
@@ -431,26 +431,6 @@ router.post('/cash-entries/:id/recompute', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
-});
-
-// GET /api/admin/login-history?user_id=&date_from=&date_to= - kim qachon kirgani
-router.get('/login-history', async (req, res) => {
-  const { user_id, date_from, date_to } = req.query;
-  const conditions = [];
-  const params = [];
-  let i = 1;
-
-  if (user_id) { conditions.push(`user_id = $${i++}`); params.push(Number(user_id)); }
-  if (date_from) { conditions.push(`logged_in_at >= $${i++}`); params.push(date_from); }
-  if (date_to) { conditions.push(`logged_in_at <= $${i++}::date + interval '1 day'`); params.push(date_to); }
-
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-
-  const result = await pool.query(
-    `SELECT id, user_id, login, role, logged_in_at FROM login_history ${where} ORDER BY logged_in_at DESC LIMIT 500`,
-    params
-  );
-  res.json({ entries: result.rows });
 });
 
 module.exports = router;
