@@ -180,6 +180,7 @@
             <label class="spot-check-item"><input type="checkbox" id="new-section-bonus_table" checked> Bonus jadvali</label>
             <label class="spot-check-item"><input type="checkbox" id="new-section-cash" checked> Kassa kiritish</label>
             <label class="spot-check-item"><input type="checkbox" id="new-section-savdo" checked> Savdo</label>
+            <label class="spot-check-item"><input type="checkbox" id="new-section-login_history" checked> Kirish tarixi</label>
           </div>
         </div>
         <button class="btn-primary" id="create-user-btn" style="max-width:160px;">Qo'shish</button>
@@ -221,33 +222,6 @@
         <tbody id="cash-entries-body"></tbody>
       </table>
       <div class="empty-state" id="cash-entries-empty" style="display:none;">Yozuv topilmadi</div>
-    </div>
-
-    <div class="section">
-      <h2>Kirish tarixi</h2>
-      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
-        Har bir foydalanuvchi qachon tizimga kirganini ko'rish uchun.
-      </p>
-      <div class="form-row">
-        <div class="field" style="max-width:220px;">
-          <label for="lh-user-select">Foydalanuvchi</label>
-          <select id="lh-user-select"><option value="">Barchasi</option></select>
-        </div>
-        <div class="field">
-          <label for="lh-from">Sanadan</label>
-          <input type="date" id="lh-from">
-        </div>
-        <div class="field">
-          <label for="lh-to">Sanagacha</label>
-          <input type="date" id="lh-to">
-        </div>
-        <button class="btn-primary" id="lh-load-btn" style="max-width:140px;">Qidirish</button>
-      </div>
-      <table style="margin-top:14px;">
-        <thead><tr><th>Login</th><th>Rol</th><th>Kirish vaqti</th></tr></thead>
-        <tbody id="login-history-body"></tbody>
-      </table>
-      <div class="empty-state" id="login-history-empty" style="display:none;">Yozuv topilmadi</div>
     </div>
   </div>
 
@@ -643,7 +617,7 @@
     });
 
     function sectionLabel(s) {
-      return { kpi: 'KPI', daily_sales: 'Kunlik savdo', bonus_table: 'Bonus jadvali', cash: 'Kassa', savdo: 'Savdo' }[s] || s;
+      return { kpi: 'KPI', daily_sales: 'Kunlik savdo', bonus_table: 'Bonus jadvali', cash: 'Kassa', savdo: 'Savdo', login_history: 'Kirish tarixi' }[s] || s;
     }
 
     async function loadUsers() {
@@ -651,12 +625,6 @@
       try {
         const data = await apiFetch('/admin/users');
         tbody.innerHTML = '';
-
-        const lhSelect = document.getElementById('lh-user-select');
-        if (lhSelect) {
-          lhSelect.innerHTML = '<option value="">Barchasi</option>' +
-            data.users.map((u) => `<option value="${u.id}">${u.login}</option>`).join('');
-        }
 
         data.users.forEach((u) => {
           const spotsNames = u.allowed_spots.length
@@ -785,7 +753,7 @@
       const user = data.users.find((u) => String(u.id) === String(userId));
       if (!user) return;
 
-      const ALL_SECTIONS = ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo'];
+      const ALL_SECTIONS = ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history'];
 
       const editRow = document.createElement('tr');
       editRow.className = 'sections-edit-row';
@@ -876,7 +844,7 @@
       const password = document.getElementById('new-password').value;
       const role = document.getElementById('new-role').value;
       const selectedSpots = Array.from(document.querySelectorAll('.new-spot-check:checked')).map((c) => Number(c.value));
-      const sections = ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo'].filter(
+      const sections = ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history'].filter(
         (s) => document.getElementById(`new-section-${s}`).checked
       );
 
@@ -936,42 +904,6 @@
         btn.textContent = 'Sinxronlash';
       }
     });
-
-    async function loadLoginHistory() {
-      const user_id = document.getElementById('lh-user-select').value;
-      const date_from = document.getElementById('lh-from').value;
-      const date_to = document.getElementById('lh-to').value;
-
-      const params = new URLSearchParams();
-      if (user_id) params.set('user_id', user_id);
-      if (date_from) params.set('date_from', date_from);
-      if (date_to) params.set('date_to', date_to);
-
-      try {
-        const data = await apiFetch('/admin/login-history?' + params.toString());
-        const tbody = document.getElementById('login-history-body');
-        const emptyEl = document.getElementById('login-history-empty');
-        tbody.innerHTML = '';
-
-        if (!data.entries.length) {
-          emptyEl.style.display = 'block';
-          return;
-        }
-        emptyEl.style.display = 'none';
-
-        tbody.innerHTML = data.entries.map((e) => `
-          <tr>
-            <td>${e.login}</td>
-            <td>${e.role || '—'}</td>
-            <td>${new Date(e.logged_in_at).toLocaleString('ru-RU')}</td>
-          </tr>
-        `).join('');
-      } catch (e) {
-        showToast('Kirish tarixini yuklashda xato: ' + e.message, true);
-      }
-    }
-
-    document.getElementById('lh-load-btn').addEventListener('click', loadLoginHistory);
 
     async function loadCashEntries() {
       const spot_id = document.getElementById('ce-spot-select').value;
@@ -1105,13 +1037,6 @@
       }
       await loadPaymentMethodMapping();
       await loadCashEntries();
-
-      const lhToday = todayStr();
-      const lhMonthAgo = new Date();
-      lhMonthAgo.setDate(lhMonthAgo.getDate() - 30);
-      document.getElementById('lh-from').value = lhMonthAgo.toISOString().slice(0, 10);
-      document.getElementById('lh-to').value = lhToday;
-      await loadLoginHistory();
     })();
   </script>
 </body>

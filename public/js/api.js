@@ -43,7 +43,7 @@ function requireSection(section) {
   if (!user) return;
   if (user.role === 'admin') return;
 
-  const allowed = user.allowed_sections || ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo'];
+  const allowed = user.allowed_sections || ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history'];
   if (!allowed.includes(section)) {
     if (allowed.includes('kpi')) {
       window.location.href = '/dashboard.html';
@@ -55,6 +55,8 @@ function requireSection(section) {
       window.location.href = '/cash-entry.html';
     } else if (allowed.includes('savdo')) {
       window.location.href = '/savdo.html';
+    } else if (allowed.includes('login_history')) {
+      window.location.href = '/login-history.html';
     } else {
       window.location.href = '/login.html';
     }
