@@ -23,7 +23,7 @@ async function init() {
       password_plain TEXT,
       role TEXT NOT NULL DEFAULT 'viewer',
       allowed_spots TEXT NOT NULL DEFAULT '[]',
-      allowed_sections TEXT NOT NULL DEFAULT '["kpi","daily_sales","bonus_table","cash","savdo","login_history"]',
+      allowed_sections TEXT NOT NULL DEFAULT '["kpi","daily_sales","bonus_table","cash","savdo","login_history","portsiya"]',
       is_active INTEGER NOT NULL DEFAULT 1,
       last_login_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT now()
@@ -72,6 +72,26 @@ async function init() {
       logged_in_at TIMESTAMP DEFAULT now()
     );
 
+    CREATE TABLE IF NOT EXISTS portion_ingredients (
+      id SERIAL PRIMARY KEY,
+      display_name TEXT NOT NULL,
+      poster_ingredient_id TEXT NOT NULL,
+      poster_ingredient_name TEXT,
+      created_at TIMESTAMP DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS portion_entries (
+      id SERIAL PRIMARY KEY,
+      date DATE NOT NULL,
+      spot_id INTEGER NOT NULL,
+      values_json TEXT NOT NULL,
+      poster_snapshot TEXT,
+      poster_synced_at TIMESTAMP,
+      entered_by TEXT,
+      created_at TIMESTAMP DEFAULT now(),
+      UNIQUE (date, spot_id)
+    );
+
     CREATE TABLE IF NOT EXISTS spot_category_config (
       spot_id INTEGER NOT NULL,
       category TEXT NOT NULL,
@@ -113,7 +133,7 @@ async function init() {
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_plain TEXT;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_sections TEXT NOT NULL DEFAULT '["kpi","daily_sales","bonus_table","cash","savdo","login_history"]';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_sections TEXT NOT NULL DEFAULT '["kpi","daily_sales","bonus_table","cash","savdo","login_history","portsiya"]';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
 
     ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS expenses TEXT NOT NULL DEFAULT '[]';

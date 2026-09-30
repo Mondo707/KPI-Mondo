@@ -236,6 +236,9 @@ async function getComparison(entry, options = {}) {
   } else {
     const transactions = await fetchTransactionsForBusinessDay(entry.date, entry.spot_id);
     snapshot = await buildPosterSnapshot(transactions, entry.spot_id);
+    // Smena farqini ham shu paytda hisoblab, keshga (snapshot ichiga) saqlaymiz -
+    // shunda keyingi safar bu yozuv ochilganda Poster'ga qayta murojaat shart bo'lmaydi.
+    snapshot.shift_diff = await getShiftDiff(entry.spot_id, entry.date);
     snapshot.computed_at = new Date().toISOString();
 
     await pool.query(
@@ -247,9 +250,8 @@ async function getComparison(entry, options = {}) {
   const paymentTypes = JSON.parse(entry.payment_types || '{}');
   const getFakt = (name) => Number(paymentTypes[name]) || 0;
 
-  // Smena ochilish/yopilish farqini olamiz (filialda qoldirilgan/float'dan
-  // sarflangan pulni Fakt tomonga to'g'irlash uchun)
-  const shiftDiffInfo = await getShiftDiff(entry.spot_id, entry.date);
+  // Smena ochilish/yopilish farqi (keshdan, yoki yuqorida yangi hisoblangan)
+  const shiftDiffInfo = snapshot.shift_diff || { hasData: false, hasOpenShift: false, diff: 0, shifts: [] };
 
   // Наличные = Тоза + Rasxod + Инкассация + Smena farqi (Poster tomonida payed_cash)
   const inkassatsiya = getFakt('Инкассация');
@@ -314,4 +316,63 @@ async function getComparison(entry, options = {}) {
   };
 }
 
-module.exports = { getComparison, isLocked, unlockTime, RECONCILE_DELAY_HOURS, fetchTransactionsForBusinessDay };
+/**
+ * Filiallar bo'yicha "Umumiy kassa" farqi hisoboti: berilgan davr uchun har bir
+ * filialning UMUMIY va O'RTACHA KUNLIK farqini hisoblaydi. Faqat allaqachon
+ * hisoblangan (poster_snapshot mavjud) yozuvlardan foydalanadi - Poster'ga
+ * qo'shimcha so'rov yubormaydi (tezkor, ko'p filial/kun bo'lsa ham og'irlik qilmaydi).
+ */
+async function getBranchDiffReport(spotIds, dateFrom, dateTo) {
+  const result = await pool.query(
+    `SELECT date, spot_id, toza, total_expense, payment_types, total_amount, poster_snapshot
+     FROM cash_entries
+     WHERE spot_id = ANY($1) AND date >= $2 AND date <= $3 AND poster_snapshot IS NOT NULL`,
+    [spotIds, dateFrom, dateTo]
+  );
+
+  const agg = new Map();
+  spotIds.forEach((sId) => agg.set(sId, { total: 0, count: 0 }));
+
+  for (const row of result.rows) {
+    const snapshot = JSON.parse(row.poster_snapshot || '{}');
+    const shiftDiff = snapshot.shift_diff && snapshot.shift_diff.hasData && !snapshot.shift_diff.hasOpenShift
+      ? snapshot.shift_diff.diff
+      : 0;
+
+    const paymentTypes = JSON.parse(row.payment_types || '{}');
+    const inkassatsiya = Number(paymentTypes['Инкассация']) || 0;
+    const naличныеFakt = row.toza + row.total_expense + inkassatsiya + shiftDiff;
+
+    const nonCashKeys = ['uzcard', 'humo', 'uz_qr', 'karta_other', 'click', 'payme', 'uzum', 'alif', 'paynet'];
+    const certKeys = ['yandex_eats', 'jizbiz'];
+    const безналичныеFakt = ['UZCARD', 'HUMO', 'Uz Qr Kod', 'Click', 'Payme', 'Uzum', 'Alif', 'Paynet']
+      .reduce((s, name) => s + (Number(paymentTypes[name]) || 0), 0);
+    const sertifikatFakt = ['Yandex eats', 'Jiz-Biz restaurant']
+      .reduce((s, name) => s + (Number(paymentTypes[name]) || 0), 0);
+
+    const umumiyFakt = naличныеFakt + безналичныеFakt + sertifikatFakt;
+    const umumiyPoster = (snapshot.cash || 0) +
+      nonCashKeys.reduce((s, k) => s + (snapshot[k] || 0), 0) +
+      certKeys.reduce((s, k) => s + (snapshot[k] || 0), 0);
+
+    const diff = Math.round(umumiyFakt - umumiyPoster);
+
+    const entry = agg.get(row.spot_id);
+    if (entry) {
+      entry.total += diff;
+      entry.count += 1;
+    }
+  }
+
+  return spotIds.map((spotId) => {
+    const entry = agg.get(spotId);
+    return {
+      spot_id: spotId,
+      total_diff: entry.total,
+      avg_diff: entry.count ? Math.round(entry.total / entry.count) : 0,
+      days_count: entry.count,
+    };
+  });
+}
+
+module.exports = { getComparison, isLocked, unlockTime, RECONCILE_DELAY_HOURS, fetchTransactionsForBusinessDay, getBranchDiffReport };

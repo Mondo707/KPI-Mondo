@@ -31,7 +31,7 @@ router.post('/login', async (req, res) => {
     );
 
     const allowedSpots = JSON.parse(user.allowed_spots || '[]');
-    const allowedSections = JSON.parse(user.allowed_sections || '["kpi","daily_sales","bonus_table","cash","savdo"]');
+    const allowedSections = JSON.parse(user.allowed_sections || '["kpi","daily_sales","bonus_table","cash","savdo","login_history","portsiya"]');
     const token = jwt.sign(
       { id: user.id, login: user.login, role: user.role, allowed_spots: allowedSpots, allowed_sections: allowedSections },
       JWT_SECRET,

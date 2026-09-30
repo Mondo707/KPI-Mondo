@@ -10,6 +10,7 @@ const { getSettingNumber, setSetting } = require('../services/appSettings');
 const { getAllProductsWithStatus, setOverride, removeOverride } = require('../services/productCategoryOverride');
 const { getProductById } = require('../services/bonusCalculator');
 const { getComparison } = require('../services/cashReconcile');
+const { getAllIngredients } = require('../services/posterStorage');
 
 const router = express.Router();
 
@@ -170,7 +171,7 @@ router.delete('/cash-entries/:id', async (req, res) => {
 // POST /api/admin/users - yangi foydalanuvchi (masalan filial menejeri/supervizor) yaratish
 // body: { login, password, role: 'viewer'|'admin', allowed_spots: [1,2,3], allowed_sections: [...] }
 router.post('/users', async (req, res) => {
-  const { login, password, role = 'viewer', allowed_spots = [], allowed_sections = ['kpi', 'daily_sales', 'bonus_table', 'cash'] } = req.body || {};
+  const { login, password, role = 'viewer', allowed_spots = [], allowed_sections = ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history', 'portsiya'] } = req.body || {};
   if (!login || !password) {
     return res.status(400).json({ error: 'login va password kerak' });
   }
@@ -198,7 +199,7 @@ router.get('/users', async (req, res) => {
     users: result.rows.map((u) => ({
       ...u,
       allowed_spots: JSON.parse(u.allowed_spots),
-      allowed_sections: JSON.parse(u.allowed_sections || '["kpi","daily_sales","bonus_table","cash","savdo","login_history"]'),
+      allowed_sections: JSON.parse(u.allowed_sections || '["kpi","daily_sales","bonus_table","cash","savdo","login_history","portsiya"]'),
       is_active: !!u.is_active,
     })),
   });
@@ -431,6 +432,42 @@ router.post('/cash-entries/:id/recompute', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// GET /api/admin/portion-ingredients - kuzatilayotgan ingredientlar ro'yxati
+router.get('/portion-ingredients', async (req, res) => {
+  const result = await pool.query('SELECT id, display_name, poster_ingredient_id, poster_ingredient_name FROM portion_ingredients ORDER BY id');
+  res.json({ ingredients: result.rows });
+});
+
+// GET /api/admin/poster-ingredients - Poster'dagi BARCHA ingredientlar (tanlash uchun)
+router.get('/poster-ingredients', async (req, res) => {
+  try {
+    const ingredients = await getAllIngredients();
+    res.json({ ingredients });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/admin/portion-ingredients - yangi kuzatilayotgan ingredient qo'shish
+// body: { display_name: "Смесь", poster_ingredient_id: "12", poster_ingredient_name: "Смесь (ombor)" }
+router.post('/portion-ingredients', async (req, res) => {
+  const { display_name, poster_ingredient_id, poster_ingredient_name } = req.body || {};
+  if (!display_name || !poster_ingredient_id) {
+    return res.status(400).json({ error: 'display_name, poster_ingredient_id kerak' });
+  }
+  const result = await pool.query(
+    'INSERT INTO portion_ingredients (display_name, poster_ingredient_id, poster_ingredient_name) VALUES ($1, $2, $3) RETURNING id',
+    [display_name, String(poster_ingredient_id), poster_ingredient_name || null]
+  );
+  res.json({ ok: true, id: result.rows[0].id });
+});
+
+// DELETE /api/admin/portion-ingredients/:id
+router.delete('/portion-ingredients/:id', async (req, res) => {
+  await pool.query('DELETE FROM portion_ingredients WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
 });
 
 module.exports = router;

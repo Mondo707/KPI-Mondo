@@ -7,6 +7,26 @@ const poster = require('./posterClient');
 const { calculateDailyBonus } = require('./bonusCalculator');
 const { getBusinessDayWindow, getCurrentBusinessDate } = require('./businessDay');
 
+const TIMEZONE_OFFSET_HOURS = Number(process.env.TIMEZONE_OFFSET_HOURS || 5);
+
+// Faol sinxronlash oynasi (Toshkent vaqti bo'yicha): 06:00 dan 03:30 gacha.
+// Eng kech yopiladigan filial soat 03:00 da yopiladi, shuning uchun 03:30'dagi
+// so'nggi sinxronlash barcha kunlik savdoni ushlab qoladi. 03:30-06:00 oralig'ida
+// scheduler HECH QANDAY so'rov yubormaydi - shu payt baza "uxlashi" mumkin
+// (Neon compute sarfini kamaytirish uchun).
+const ACTIVE_START_MIN = 6 * 60;        // 06:00
+const ACTIVE_END_MIN = 3 * 60 + 30;     // 03:30 (keyingi kun)
+
+function isWithinActiveWindow() {
+  const now = new Date();
+  const tashkentMs = now.getTime() + TIMEZONE_OFFSET_HOURS * 60 * 60 * 1000;
+  const tashkentDate = new Date(tashkentMs);
+  const minutesOfDay = tashkentDate.getUTCHours() * 60 + tashkentDate.getUTCMinutes();
+
+  // Oyna kechayarimdan o'tadi (06:00 -> ertasi 03:30), shuning uchun "yoki" mantig'i:
+  return minutesOfDay >= ACTIVE_START_MIN || minutesOfDay < ACTIVE_END_MIN;
+}
+
 async function fetchTransactionsForCalendarDate(date) {
   let allTx = [];
   let page = 1;
@@ -88,6 +108,10 @@ async function syncDate(date) {
 let isSyncing = false;
 
 async function runSync() {
+  if (!isWithinActiveWindow()) {
+    // Tinch soat (03:30-06:00) - hech qanday so'rov yubormaymiz, baza uxlashi mumkin
+    return;
+  }
   if (isSyncing) {
     console.log('[scheduler] Oldingi sinxronlash hali tugamagan, bu safar o\'tkazib yuborildi.');
     return;
@@ -107,7 +131,7 @@ function startScheduler() {
   const intervalMinutes = Number(process.env.SYNC_INTERVAL_MINUTES || 1);
   runSync();
   cron.schedule(`*/${intervalMinutes} * * * *`, runSync);
-  console.log(`[scheduler] Har ${intervalMinutes} daqiqada avtomatik yangilanish yoqildi (ish kuni: 05:00-05:00).`);
+  console.log(`[scheduler] Har ${intervalMinutes} daqiqada avtomatik yangilanish yoqildi (ish kuni: 05:00-05:00, faol soat: 06:00-03:30).`);
 }
 
 module.exports = { startScheduler, syncDate };

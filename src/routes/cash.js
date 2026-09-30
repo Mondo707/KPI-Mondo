@@ -2,7 +2,7 @@ const express = require('express');
 const XLSX = require('xlsx');
 const { pool } = require('../db/db');
 const { authRequired, requireSection } = require('../middleware/auth');
-const { getComparison } = require('../services/cashReconcile');
+const { getComparison, getBranchDiffReport } = require('../services/cashReconcile');
 const { getShiftStatus } = require('../services/posterShiftStatus');
 const poster = require('../services/posterClient');
 
@@ -349,6 +349,35 @@ router.get('/sales-summary', authRequired, requireSection('savdo'), async (req, 
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// GET /api/cash/branch-diff-report?spot_ids=1,2,3&date_from=&date_to=
+// Filiallar bo'yicha "Umumiy kassa" farqi hisoboti (Poster'ga qo'shimcha
+// so'rov yubormaydi, faqat allaqachon hisoblangan yozuvlardan foydalanadi).
+router.get('/branch-diff-report', authRequired, requireSection('cash'), async (req, res) => {
+  const { spot_ids, date_from, date_to } = req.query;
+  if (!date_from || !date_to) return res.status(400).json({ error: 'date_from, date_to kerak' });
+
+  const allowedSpots = req.user.allowed_spots || [];
+  let spotIds;
+  if (spot_ids) {
+    spotIds = spot_ids.split(',').map(Number);
+    if (allowedSpots.length > 0) spotIds = spotIds.filter((id) => allowedSpots.includes(id));
+  } else if (allowedSpots.length > 0) {
+    spotIds = allowedSpots;
+  } else {
+    // Cheklovsiz foydalanuvchi (admin) hech qanday filial tanlamagan -
+    // shu davrda ma'lumoti bor barcha filiallarni olamiz
+    const distinctRes = await pool.query(
+      'SELECT DISTINCT spot_id FROM cash_entries WHERE date >= $1 AND date <= $2',
+      [date_from, date_to]
+    );
+    spotIds = distinctRes.rows.map((r) => r.spot_id);
+  }
+  if (!spotIds.length) return res.json({ rows: [] });
+
+  const rows = await getBranchDiffReport(spotIds, date_from, date_to);
+  res.json({ rows });
 });
 
 module.exports = router;
