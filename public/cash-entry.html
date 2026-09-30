@@ -131,6 +131,36 @@
       </table>
       <div class="empty-state" id="diff-journal-empty" style="display:none;">Hali yozuv yo'q</div>
     </div>
+
+    <div class="section" style="margin-top:24px;">
+      <h2 style="margin-top:0;">Filiallar bo'yicha farq hisoboti</h2>
+      <p class="journal-sub">Bir nechta filialni birga tanlab, ularning Poster bilan "Umumiy kassa" farqini solishtiring.</p>
+
+      <div class="form-row">
+        <div class="field multiselect">
+          <label>Filiallar</label>
+          <div class="ms-box" id="bdr-ms-box">
+            <span class="ms-placeholder">Barchasi (ruxsatingiz bor filiallar)</span>
+          </div>
+          <div class="ms-dropdown" id="bdr-ms-dropdown"></div>
+        </div>
+        <div class="field">
+          <label for="bdr-from">Sanadan</label>
+          <input type="date" id="bdr-from">
+        </div>
+        <div class="field">
+          <label for="bdr-to">Sanagacha</label>
+          <input type="date" id="bdr-to">
+        </div>
+        <button class="btn-primary apply-btn" id="bdr-btn" style="max-width:140px;">Qidirish</button>
+      </div>
+
+      <table>
+        <thead><tr><th>Filial</th><th style="text-align:right;">Umumiy farq</th><th style="text-align:right;">O'rtacha/kun</th></tr></thead>
+        <tbody id="bdr-body"></tbody>
+      </table>
+      <div class="empty-state" id="bdr-empty" style="display:none;">Ma'lumot topilmadi</div>
+    </div>
   </div>
 
   <script src="/js/api.js"></script>
@@ -662,6 +692,91 @@
     document.getElementById('export-btn').addEventListener('click', exportExcel);
     document.getElementById('spot_id').addEventListener('change', () => { loadEntry(); loadJournal(); loadDiffJournal(); });
 
+    let selectedBdrSpots = [];
+
+    function renderBdrChips() {
+      const box = document.getElementById('bdr-ms-box');
+      if (!selectedBdrSpots.length) {
+        box.innerHTML = '<span class="ms-placeholder">Barchasi (ruxsatingiz bor filiallar)</span>';
+        return;
+      }
+      box.innerHTML = selectedBdrSpots.map((id) => `
+        <span class="ms-chip" data-spot="${id}">${spotsById[id] || id} <span class="x" data-remove="${id}">&times;</span></span>
+      `).join('');
+      box.querySelectorAll('.x').forEach((x) => {
+        x.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectedBdrSpots = selectedBdrSpots.filter((id) => id !== Number(x.dataset.remove));
+          renderBdrChips();
+          renderBdrDropdown();
+        });
+      });
+    }
+
+    function renderBdrDropdown() {
+      const dropdown = document.getElementById('bdr-ms-dropdown');
+      const options = Array.from(document.getElementById('spot_id').options).filter((o) => o.value !== '');
+      dropdown.innerHTML = options.map((o) => `
+        <label class="ms-option">
+          <input type="checkbox" value="${o.value}" ${selectedBdrSpots.includes(Number(o.value)) ? 'checked' : ''}>
+          ${o.textContent}
+        </label>
+      `).join('');
+      dropdown.querySelectorAll('input').forEach((cb) => {
+        cb.addEventListener('change', () => {
+          const id = Number(cb.value);
+          if (cb.checked) selectedBdrSpots.push(id);
+          else selectedBdrSpots = selectedBdrSpots.filter((x) => x !== id);
+          renderBdrChips();
+        });
+      });
+    }
+
+    document.getElementById('bdr-ms-box').addEventListener('click', () => {
+      document.getElementById('bdr-ms-dropdown').classList.toggle('open');
+    });
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.multiselect')) {
+        document.getElementById('bdr-ms-dropdown').classList.remove('open');
+      }
+    });
+
+    async function loadBranchDiffReport() {
+      const date_from = document.getElementById('bdr-from').value;
+      const date_to = document.getElementById('bdr-to').value;
+
+      const params = new URLSearchParams({ date_from, date_to });
+      if (selectedBdrSpots.length) params.set('spot_ids', selectedBdrSpots.join(','));
+
+      try {
+        const data = await apiFetch('/cash/branch-diff-report?' + params.toString());
+        const tbody = document.getElementById('bdr-body');
+        const emptyEl = document.getElementById('bdr-empty');
+
+        if (!data.rows.length) {
+          tbody.innerHTML = '';
+          emptyEl.style.display = 'block';
+          return;
+        }
+        emptyEl.style.display = 'none';
+
+        tbody.innerHTML = data.rows.map((r) => {
+          const cls = r.total_diff === 0 ? 'diff-pos' : 'diff-neg';
+          const clsAvg = r.avg_diff === 0 ? 'diff-pos' : 'diff-neg';
+          const fmt = (v) => (v > 0 ? '+' : '') + v.toLocaleString('ru-RU');
+          return `<tr>
+            <td><b>${spotsById[r.spot_id] || r.spot_id}</b></td>
+            <td style="text-align:right;" class="${cls}">${fmt(r.total_diff)}</td>
+            <td style="text-align:right;" class="${clsAvg}">${fmt(r.avg_diff)}</td>
+          </tr>`;
+        }).join('');
+      } catch (e) {
+        showToast('Hisobotni yuklashda xato: ' + e.message, true);
+      }
+    }
+
+    document.getElementById('bdr-btn').addEventListener('click', loadBranchDiffReport);
+
     (async function init() {
       document.getElementById('entry_date').value = todayStr();
       buildBanknoteGrid();
@@ -691,7 +806,13 @@
       recalc();
       await loadEntry();
       await loadJournal();
-        await loadDiffJournal();
+      await loadDiffJournal();
+
+      renderBdrDropdown();
+      const bdrToday = todayStr();
+      document.getElementById('bdr-from').value = bdrToday;
+      document.getElementById('bdr-to').value = bdrToday;
+      await loadBranchDiffReport();
     })();
   </script>
 </body>

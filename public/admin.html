@@ -61,6 +61,34 @@
       <div class="empty-state" id="products-empty" style="display:none;">Mahsulotlar topilmadi</div>
     </div>
 
+    <div class="section" style="border-color: var(--brand-purple);">
+      <h2>Portsiya ingredientlari</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
+        Смесь/Шарик bilan cheklanmaydi — xohlagancha ingredient qo'shishingiz mumkin. Har biri xodimlar
+        "Portsiya" formasida avtomatik chiqadi.
+      </p>
+      <table style="margin-bottom:16px;">
+        <thead><tr><th>Nomi (xodimlarga ko'rinadi)</th><th>Poster ingredienti</th><th></th></tr></thead>
+        <tbody id="portion-ingredients-body"></tbody>
+      </table>
+      <div class="empty-state" id="portion-ingredients-empty" style="display:none;">Hali ingredient qo'shilmagan</div>
+
+      <div style="background:var(--card-hover); border:1px solid var(--border-strong); border-radius:10px; padding:16px;">
+        <div style="font-size:13px; font-weight:700; margin-bottom:12px;">+ Yangi ingredient qo'shish</div>
+        <div class="form-row">
+          <div class="field">
+            <label for="pi-display-name">Nomi (xodimlarga qanday ko'rinsin)</label>
+            <input type="text" id="pi-display-name" placeholder="Masalan: Смесь">
+          </div>
+          <div class="field" style="flex:1;">
+            <label for="pi-poster-select">Poster'dagi ingredient</label>
+            <select id="pi-poster-select"><option value="">Yuklanmoqda...</option></select>
+          </div>
+        </div>
+        <button class="btn-primary" id="pi-add-btn" style="max-width:160px;">Qo'shish</button>
+      </div>
+    </div>
+
     <div class="section">
       <h2>Filial bo'yicha kategoriya sozlamalari</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
@@ -181,6 +209,7 @@
             <label class="spot-check-item"><input type="checkbox" id="new-section-cash" checked> Kassa kiritish</label>
             <label class="spot-check-item"><input type="checkbox" id="new-section-savdo" checked> Savdo</label>
             <label class="spot-check-item"><input type="checkbox" id="new-section-login_history" checked> Kirish tarixi</label>
+            <label class="spot-check-item"><input type="checkbox" id="new-section-portsiya" checked> Portsiya</label>
           </div>
         </div>
         <button class="btn-primary" id="create-user-btn" style="max-width:160px;">Qo'shish</button>
@@ -235,6 +264,84 @@
     let spotsList = [];
 
     let allProductsCache = [];
+    let allPosterIngredientsCache = [];
+
+    async function loadPortionIngredients() {
+      const tbody = document.getElementById('portion-ingredients-body');
+      const emptyEl = document.getElementById('portion-ingredients-empty');
+      try {
+        const data = await apiFetch('/admin/portion-ingredients');
+        if (!data.ingredients.length) {
+          tbody.innerHTML = '';
+          emptyEl.style.display = 'block';
+          return;
+        }
+        emptyEl.style.display = 'none';
+        tbody.innerHTML = data.ingredients.map((ing) => `
+          <tr>
+            <td>${ing.display_name}</td>
+            <td>${ing.poster_ingredient_name || ('#' + ing.poster_ingredient_id)}</td>
+            <td><button class="action-btn danger" data-remove-id="${ing.id}">O'chirish</button></td>
+          </tr>
+        `).join('');
+        tbody.querySelectorAll('[data-remove-id]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Bu ingredientni o\'chirasizmi? Xodimlar formasidan ham yo\'qoladi.')) return;
+            try {
+              await apiFetch(`/admin/portion-ingredients/${btn.dataset.removeId}`, { method: 'DELETE' });
+              showToast('O\'chirildi');
+              await loadPortionIngredients();
+            } catch (e) {
+              showToast('Xato: ' + e.message, true);
+            }
+          });
+        });
+      } catch (e) {
+        showToast('Portsiya ingredientlarini yuklashda xato: ' + e.message, true);
+      }
+    }
+
+    async function loadPosterIngredientsForSelect() {
+      const select = document.getElementById('pi-poster-select');
+      try {
+        const data = await apiFetch('/admin/poster-ingredients');
+        allPosterIngredientsCache = data.ingredients;
+        select.innerHTML = '<option value="">— qidiring yoki tanlang —</option>' +
+          data.ingredients.map((ing) => `<option value="${ing.ingredient_id}" data-name="${ing.name}">${ing.name} (${ing.unit})</option>`).join('');
+      } catch (e) {
+        select.innerHTML = '<option value="">Yuklab bo\'lmadi</option>';
+        showToast('Poster ingredientlarini yuklashda xato: ' + e.message, true);
+      }
+    }
+
+    document.getElementById('pi-add-btn').addEventListener('click', async () => {
+      const displayName = document.getElementById('pi-display-name').value.trim();
+      const select = document.getElementById('pi-poster-select');
+      const posterIngredientId = select.value;
+      const posterIngredientName = select.selectedOptions[0]?.dataset.name;
+
+      if (!displayName || !posterIngredientId) {
+        showToast('Nomi va Poster ingredientini tanlang', true);
+        return;
+      }
+
+      try {
+        await apiFetch('/admin/portion-ingredients', {
+          method: 'POST',
+          body: JSON.stringify({
+            display_name: displayName,
+            poster_ingredient_id: posterIngredientId,
+            poster_ingredient_name: posterIngredientName,
+          }),
+        });
+        showToast(`"${displayName}" qo'shildi`);
+        document.getElementById('pi-display-name').value = '';
+        select.value = '';
+        await loadPortionIngredients();
+      } catch (e) {
+        showToast('Xato: ' + e.message, true);
+      }
+    });
 
     async function loadProducts() {
       const tbody = document.getElementById('products-body');
@@ -617,7 +724,7 @@
     });
 
     function sectionLabel(s) {
-      return { kpi: 'KPI', daily_sales: 'Kunlik savdo', bonus_table: 'Bonus jadvali', cash: 'Kassa', savdo: 'Savdo', login_history: 'Kirish tarixi' }[s] || s;
+      return { kpi: 'KPI', daily_sales: 'Kunlik savdo', bonus_table: 'Bonus jadvali', cash: 'Kassa', savdo: 'Savdo', login_history: 'Kirish tarixi', portsiya: 'Portsiya' }[s] || s;
     }
 
     async function loadUsers() {
@@ -753,7 +860,7 @@
       const user = data.users.find((u) => String(u.id) === String(userId));
       if (!user) return;
 
-      const ALL_SECTIONS = ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history'];
+      const ALL_SECTIONS = ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history', 'portsiya'];
 
       const editRow = document.createElement('tr');
       editRow.className = 'sections-edit-row';
@@ -844,7 +951,7 @@
       const password = document.getElementById('new-password').value;
       const role = document.getElementById('new-role').value;
       const selectedSpots = Array.from(document.querySelectorAll('.new-spot-check:checked')).map((c) => Number(c.value));
-      const sections = ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history'].filter(
+      const sections = ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history', 'portsiya'].filter(
         (s) => document.getElementById(`new-section-${s}`).checked
       );
 
@@ -1029,6 +1136,8 @@
       await loadSpotsForForm();
       await loadBonusConfig();
       await loadProducts();
+      await loadPortionIngredients();
+      await loadPosterIngredientsForSelect();
       await loadUsers();
 
       if (spotsList.length) {

@@ -5,8 +5,8 @@ function renderTopbar(activePage) {
 
   const isAdmin = user.role === 'admin';
   const allowedSections = isAdmin
-    ? ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history']
-    : (user.allowed_sections || ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history']);
+    ? ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history', 'portsiya']
+    : (user.allowed_sections || ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history', 'portsiya']);
 
   const currentTheme = localStorage.getItem('kpi_theme') || 'dark';
   const isDark = currentTheme === 'dark';
@@ -24,6 +24,7 @@ function renderTopbar(activePage) {
       ${allowedSections.includes('daily_sales') ? `<a href="/daily-sales.html" class="${activePage === 'sales' ? 'active' : ''}">Kunlik savdo</a>` : ''}
       ${allowedSections.includes('bonus_table') ? `<a href="/bonus-table.html" class="${activePage === 'bonus_table' ? 'active' : ''}">Bonus jadvali</a>` : ''}
       ${allowedSections.includes('cash') ? `<a href="/cash-entry.html" class="${activePage === 'cash' ? 'active' : ''}">Kassa kiritish</a>` : ''}
+      ${allowedSections.includes('portsiya') ? `<a href="/portsiya.html" class="${activePage === 'portsiya' ? 'active' : ''}">Portsiya</a>` : ''}
       ${allowedSections.includes('savdo') ? `<a href="/savdo.html" class="${activePage === 'savdo' ? 'active' : ''}">Savdo</a>` : ''}
       ${allowedSections.includes('login_history') ? `<a href="/login-history.html" class="${activePage === 'login_history' ? 'active' : ''}">Kirish tarixi</a>` : ''}
       ${isAdmin ? `<a href="/admin.html" class="${activePage === 'admin' ? 'active' : ''}">Admin panel</a>` : ''}
