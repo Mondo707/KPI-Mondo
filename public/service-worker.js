@@ -5,7 +5,7 @@
 // tarmoqdan yangi ma'lumot olinadi. Faqat DIZAYN fayllari (CSS, JS, rasmlar)
 // tezroq yuklanishi uchun keshlanadi.
 
-const CACHE_NAME = 'kpi-bonus-v1';
+const CACHE_NAME = 'kpi-bonus-v2';
 const STATIC_ASSETS = [
   '/css/style.css',
   '/js/api.js',
