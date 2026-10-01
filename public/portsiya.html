@@ -2,7 +2,7 @@
 <html lang="uz">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Portsiya — KPI Bonus</title>
 <script>(function(){var t=localStorage.getItem('kpi_theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
 <link rel="manifest" href="/manifest.json">
@@ -263,8 +263,8 @@
       const options = Array.from(document.getElementById('spot_id').options).filter((o) => o.value !== '');
       dropdown.innerHTML = options.map((o) => `
         <label class="ms-option">
+          <span class="ms-option-name">${o.textContent}</span>
           <input type="checkbox" value="${o.value}" ${selectedReportSpots.includes(Number(o.value)) ? 'checked' : ''}>
-          ${o.textContent}
         </label>
       `).join('');
       dropdown.querySelectorAll('input').forEach((cb) => {

@@ -899,14 +899,24 @@ td.indent { padding-left: 26px; color: var(--text-dim); }
 .ms-option {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  border-radius: 6px;
-  font-size: 13px;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.3;
   cursor: pointer;
 }
 .ms-option:hover { background: var(--card-hover); }
-.ms-option input { margin: 0; }
+.ms-option-name { color: var(--text); flex: 1; }
+.ms-option input {
+  margin: 0;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
 
 /* ---- PWA "ilovani o'rnatish" banneri ---- */
 .pwa-install-banner {
