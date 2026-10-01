@@ -470,4 +470,50 @@ router.delete('/portion-ingredients/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+// GET /api/admin/portion-entries?spot_id=&date_from=&date_to= - Portsiya yozuvlari ro'yxati (admin)
+router.get('/portion-entries', async (req, res) => {
+  const { spot_id, date_from, date_to } = req.query;
+  const conditions = [];
+  const params = [];
+  let i = 1;
+  if (spot_id) { conditions.push(`spot_id = $${i++}`); params.push(Number(spot_id)); }
+  if (date_from) { conditions.push(`date >= $${i++}`); params.push(date_from); }
+  if (date_to) { conditions.push(`date <= $${i++}`); params.push(date_to); }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const result = await pool.query(
+    `SELECT id, date, spot_id, values_json, entered_by, created_at FROM portion_entries ${where} ORDER BY date DESC, spot_id ASC`,
+    params
+  );
+  res.json({ entries: result.rows });
+});
+
+// PUT /api/admin/portion-entries/:id - admin tomonidan Portsiya yozuvini tahrirlash
+// body: { values: { "1": 18.5, "2": 7.2 } }
+router.put('/portion-entries/:id', async (req, res) => {
+  const { id } = req.params;
+  const { values } = req.body || {};
+  if (!values) return res.status(400).json({ error: 'values kerak' });
+
+  const existing = await pool.query('SELECT id FROM portion_entries WHERE id = $1', [id]);
+  if (!existing.rows.length) return res.status(404).json({ error: 'Yozuv topilmadi' });
+
+  // Qiymat o'zgargani uchun keshni tashlaymiz - keyingi ochilishda Poster'dan qayta hisoblanadi
+  await pool.query(
+    'UPDATE portion_entries SET values_json = $1, poster_snapshot = NULL, poster_synced_at = NULL WHERE id = $2',
+    [JSON.stringify(values), id]
+  );
+  res.json({ ok: true });
+});
+
+// DELETE /api/admin/portion-entries/:id - Portsiya yozuvini o'chirish
+router.delete('/portion-entries/:id', async (req, res) => {
+  const { id } = req.params;
+  const existing = await pool.query('SELECT id FROM portion_entries WHERE id = $1', [id]);
+  if (!existing.rows.length) return res.status(404).json({ error: 'Yozuv topilmadi' });
+
+  await pool.query('DELETE FROM portion_entries WHERE id = $1', [id]);
+  res.json({ ok: true });
+});
+
 module.exports = router;
