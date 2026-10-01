@@ -263,6 +263,17 @@ table {
   border-radius: var(--radius);
   overflow: hidden;
 }
+
+/* Tor ekranda (mobil) jadval tarkibi sig'masa, jadvalning O'ZI gorizontal
+   aylantiriladi (butun sahifa emas) - shunda boshqa ustunlar "yo'qolib"
+   qolmaydi, faqat suring kerak bo'ladi. */
+@media (max-width: 760px) {
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
 th, td {
   text-align: left;
   padding: 10px 14px;
@@ -843,6 +854,16 @@ td.indent { padding-left: 26px; color: var(--text-dim); }
   gap: 6px;
   align-items: center;
   cursor: pointer;
+}
+
+/* Tor ekranda 240px talab qilinishi atrofidagi joydan kattaroq bo'lib,
+   chetga chiqib ketishi mumkin edi - shuning uchun bu yerda katakcha
+   o'ziga ajratilgan joyga moslashadi, qolgan filtr maydonlari bilan birga
+   to'liq qatorni egallaydi. */
+@media (max-width: 760px) {
+  .multiselect { flex-basis: 100%; width: 100%; }
+  .ms-box { min-width: 0; width: 100%; }
+  .ms-dropdown { width: 100%; max-width: none; }
 }
 .ms-chip {
   background: rgba(245,197,24,0.15);
