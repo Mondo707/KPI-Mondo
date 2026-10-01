@@ -41,12 +41,14 @@
 
 * { box-sizing: border-box; }
 
+html { overflow-x: hidden; }
 body {
   margin: 0;
   font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 a { color: inherit; }
@@ -571,6 +573,11 @@ tr:hover td { background: var(--card-hover); }
 .tier-cell .range { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
 .tier-cell input { padding: 6px 8px; font-size: 13px; }
 
+/* Tor ekranda 5 ustun sig'maydi - kenglikka qarab avtomatik kamroq ustunga o'tadi */
+@media (max-width: 760px) {
+  .tier-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
 .category-row { margin-bottom: 16px; }
 .category-row .cat-name { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
 
@@ -657,6 +664,17 @@ tr:hover td { background: var(--card-hover); }
 }
 .pt-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .pt-row input { width: 130px; }
+
+/* Tor ekranda (mobil) kupyura/to'lov turlari jadvali bitta ustunga tushadi -
+   2 ustunli grid gorizontal chetga chiqib ketmasligi uchun. Kompyuterda
+   (861px+) hozirgi 2 ustunli, ustun-bo'yicha to'ldirish tartibi saqlanadi. */
+@media (max-width: 760px) {
+  .banknote-grid, .paytype-grid {
+    grid-template-columns: 1fr;
+    grid-auto-flow: row;
+    grid-template-rows: none;
+  }
+}
 
 .kassa-summary {
   background: linear-gradient(180deg, var(--card-hover), var(--card));
