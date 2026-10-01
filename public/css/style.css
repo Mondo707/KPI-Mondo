@@ -135,31 +135,89 @@ button {
 }
 
 /* ---- Layout ---- */
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 2px solid var(--accent);
-  background: var(--card);
-  background-image: linear-gradient(90deg, rgba(90,41,117,0.10), transparent 45%);
+/* ============ SIDEBAR (kompyuter) va Mobil menyu ============ */
+
+body.has-sidebar { margin: 0; }
+
+.sidebar {
+  position: fixed; top: 0; left: 0; bottom: 0; width: 240px;
+  background: var(--card); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 20px 14px;
+  z-index: 50; overflow-y: auto;
+}
+.sidebar .brand {
+  display: flex; align-items: center; gap: 10px; font-weight: 700;
+  padding: 6px 10px 22px;
+}
+.sidebar .brand-logo { height: 34px; }
+.sidebar nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.sidebar nav a {
+  display: flex; align-items: center; gap: 12px;
+  text-decoration: none; color: var(--text-dim); font-size: 14.5px; font-weight: 600;
+  padding: 12px 14px; border-radius: 10px; transition: background 0.15s, color 0.15s;
+}
+.sidebar nav a .nav-ic { font-size: 17px; width: 20px; text-align: center; }
+.sidebar nav a:hover { background: var(--card-hover); color: var(--text); }
+.sidebar nav a.active {
+  color: var(--accent); background: rgba(245,197,24,0.1);
+  border-left: 3px solid var(--accent); padding-left: 11px;
+}
+.sidebar .bottom-block { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 10px; }
+.sidebar .user-chip {
+  font-size: 12.5px; color: var(--text-dim); background: var(--card-hover);
+  border: 1px solid var(--border); padding: 10px 12px; border-radius: 10px; margin-bottom: 8px;
+}
+.theme-toggle-full {
+  width: 100%; padding: 10px; border-radius: 10px; background: var(--card-hover);
+  border: 1px solid var(--border); color: var(--text); font-size: 13px; cursor: pointer;
 }
 
-.topbar .brand { font-weight: 700; }
-.topbar nav a {
-  margin-left: 16px;
-  text-decoration: none;
-  color: var(--text-dim);
-  font-size: 14px;
+/* Mobil yuqori panel (faqat tor ekranda ko'rinadi) */
+.mobile-topbar {
+  display: none; position: sticky; top: 0; z-index: 100;
+  align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: rgba(15,21,38,0.95); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
 }
-.topbar nav a.active, .topbar nav a:hover { color: var(--accent); }
+.mobile-topbar .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.icon-btn {
+  width: 38px; height: 38px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card-hover); display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 17px; color: var(--text);
+}
 
-.topbar .user-info {
-  font-size: 13px;
-  color: var(--text-dim);
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.mobile-menu {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 80%; max-width: 320px;
+  background: var(--card); border-left: 1px solid var(--border);
+  z-index: 200; padding: 20px; transform: translateX(100%);
+  transition: transform 0.25s ease; box-shadow: -10px 0 40px rgba(0,0,0,0.5);
+  overflow-y: auto;
+}
+.mobile-menu.open { transform: translateX(0); }
+.mobile-menu .close-btn {
+  width: 38px; height: 38px; border-radius: 8px; background: var(--card-hover);
+  border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+  margin-bottom: 22px; cursor: pointer; font-size: 15px; gap: 6px;
+}
+.mobile-menu a {
+  display: flex; align-items: center; gap: 12px;
+  text-decoration: none; color: var(--text); font-size: 15.5px; font-weight: 600;
+  padding: 15px 12px; border-radius: 10px; margin-bottom: 4px;
+}
+.mobile-menu a .nav-ic { font-size: 18px; width: 22px; text-align: center; }
+.mobile-menu a.active { color: var(--accent); background: rgba(245,197,24,0.08); }
+.mobile-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 150;
+}
+.mobile-overlay.show { display: block; }
+
+@media (min-width: 861px) {
+  body.has-sidebar { padding-left: 240px; }
+}
+@media (max-width: 860px) {
+  .sidebar { display: none; }
+  .mobile-topbar { display: flex; }
+  .mobile-menu { display: block; }
 }
 
 /* ---- Filters ---- */
@@ -810,3 +868,29 @@ td.indent { padding-left: 26px; color: var(--text-dim); }
 }
 .ms-option:hover { background: var(--card-hover); }
 .ms-option input { margin: 0; }
+
+/* ---- PWA "ilovani o'rnatish" banneri ---- */
+.pwa-install-banner {
+  position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 300;
+  background: var(--card); border: 1px solid var(--accent-dark);
+  border-radius: 14px; padding: 14px 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  max-width: 480px; margin: 0 auto;
+}
+.pwa-install-text { display: flex; flex-direction: column; gap: 3px; }
+.pwa-install-text b { font-size: 14px; }
+.pwa-install-text span { font-size: 12px; color: var(--text-dim); }
+.pwa-install-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.pwa-install-btn {
+  background: var(--accent); color: #2b2205; border: none;
+  padding: 9px 16px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer;
+}
+.pwa-install-close {
+  width: 30px; height: 30px; border-radius: 8px; background: var(--card-hover);
+  border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; font-size: 14px;
+}
+@media (max-width: 500px) {
+  .pwa-install-banner { flex-direction: column; align-items: stretch; }
+  .pwa-install-actions { justify-content: flex-end; }
+}

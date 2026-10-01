@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin panel — KPI Bonus</title>
 <script>(function(){var t=localStorage.getItem('kpi_theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#080b14">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -87,6 +92,33 @@
         </div>
         <button class="btn-primary" id="pi-add-btn" style="max-width:160px;">Qo'shish</button>
       </div>
+    </div>
+
+    <div class="section" style="border-color: var(--brand-purple);">
+      <h2>Portsiya yozuvlari</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
+        Xodimlar kiritgan Portsiya ma'lumotlarini bu yerdan tahrirlash yoki o'chirish mumkin.
+      </p>
+      <div class="form-row">
+        <div class="field">
+          <label for="pe-spot-select">Filial</label>
+          <select id="pe-spot-select"><option value="">Barchasi</option></select>
+        </div>
+        <div class="field">
+          <label for="pe-from">Sanadan</label>
+          <input type="date" id="pe-from">
+        </div>
+        <div class="field">
+          <label for="pe-to">Sanagacha</label>
+          <input type="date" id="pe-to">
+        </div>
+        <button class="btn-primary" id="pe-search-btn" style="max-width:140px;">Qidirish</button>
+      </div>
+      <table style="margin-top:14px;">
+        <thead><tr><th>Sana</th><th>Filial</th><th>Qiymatlar</th><th>Kim kiritgan</th><th></th></tr></thead>
+        <tbody id="portion-entries-body"></tbody>
+      </table>
+      <div class="empty-state" id="portion-entries-empty" style="display:none;">Yozuv topilmadi</div>
     </div>
 
     <div class="section">
@@ -262,15 +294,19 @@
     renderTopbar('admin');
 
     let spotsList = [];
+    let spotsById = {};
 
     let allProductsCache = [];
     let allPosterIngredientsCache = [];
+
+    let portionIngredientsCache = [];
 
     async function loadPortionIngredients() {
       const tbody = document.getElementById('portion-ingredients-body');
       const emptyEl = document.getElementById('portion-ingredients-empty');
       try {
         const data = await apiFetch('/admin/portion-ingredients');
+        portionIngredientsCache = data.ingredients;
         if (!data.ingredients.length) {
           tbody.innerHTML = '';
           emptyEl.style.display = 'block';
@@ -313,6 +349,103 @@
         showToast('Poster ingredientlarini yuklashda xato: ' + e.message, true);
       }
     }
+
+    function ingredientName(id) {
+      const ing = portionIngredientsCache.find((i) => String(i.id) === String(id));
+      return ing ? ing.display_name : ('#' + id);
+    }
+
+    async function loadPortionEntriesAdmin() {
+      const spot_id = document.getElementById('pe-spot-select').value;
+      const date_from = document.getElementById('pe-from').value;
+      const date_to = document.getElementById('pe-to').value;
+
+      const params = new URLSearchParams();
+      if (spot_id) params.set('spot_id', spot_id);
+      if (date_from) params.set('date_from', date_from);
+      if (date_to) params.set('date_to', date_to);
+
+      const tbody = document.getElementById('portion-entries-body');
+      const emptyEl = document.getElementById('portion-entries-empty');
+
+      try {
+        const data = await apiFetch('/admin/portion-entries?' + params.toString());
+        if (!data.entries.length) {
+          tbody.innerHTML = '';
+          emptyEl.style.display = 'block';
+          return;
+        }
+        emptyEl.style.display = 'none';
+
+        tbody.innerHTML = data.entries.map((e) => {
+          const values = JSON.parse(e.values_json || '{}');
+          const summary = Object.entries(values).map(([id, v]) => `${ingredientName(id)}: ${v}`).join(', ') || '—';
+          return `<tr data-entry-id="${e.id}">
+            <td>${e.date}</td>
+            <td>${spotsById[e.spot_id] || ('#' + e.spot_id)}</td>
+            <td class="pe-values-display">${summary}</td>
+            <td>${e.entered_by || '—'}</td>
+            <td>
+              <button class="action-btn" data-edit-id="${e.id}">Tahrirlash</button>
+              <button class="action-btn danger" data-delete-id="${e.id}">O'chirish</button>
+            </td>
+          </tr>`;
+        }).join('');
+
+        tbody.querySelectorAll('[data-delete-id]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Bu Portsiya yozuvini o\'chirasizmi?')) return;
+            try {
+              await apiFetch(`/admin/portion-entries/${btn.dataset.deleteId}`, { method: 'DELETE' });
+              showToast('Yozuv o\'chirildi');
+              await loadPortionEntriesAdmin();
+            } catch (err) {
+              showToast('Xato: ' + err.message, true);
+            }
+          });
+        });
+
+        tbody.querySelectorAll('[data-edit-id]').forEach((btn) => {
+          btn.addEventListener('click', () => startEditPortionEntry(btn.dataset.editId, data.entries));
+        });
+      } catch (e) {
+        showToast('Portsiya yozuvlarini yuklashda xato: ' + e.message, true);
+      }
+    }
+
+    function startEditPortionEntry(entryId, entries) {
+      const entry = entries.find((e) => String(e.id) === String(entryId));
+      if (!entry) return;
+      const values = JSON.parse(entry.values_json || '{}');
+      const row = document.querySelector(`tr[data-entry-id="${entryId}"]`);
+      const cell = row.querySelector('.pe-values-display');
+
+      cell.innerHTML = portionIngredientsCache.map((ing) => `
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+          <span style="min-width:90px; font-size:12.5px; color:var(--text-dim);">${ing.display_name}:</span>
+          <input type="number" step="0.1" class="pe-edit-input" data-ing-id="${ing.id}" value="${values[ing.id] ?? ''}" style="width:90px;">
+        </div>
+      `).join('') + `<button class="action-btn" data-save-id="${entryId}" style="margin-top:6px;">Saqlash</button>`;
+
+      cell.querySelector(`[data-save-id="${entryId}"]`).addEventListener('click', async () => {
+        const newValues = {};
+        cell.querySelectorAll('.pe-edit-input').forEach((inp) => {
+          if (inp.value !== '') newValues[inp.dataset.ingId] = Number(inp.value);
+        });
+        try {
+          await apiFetch(`/admin/portion-entries/${entryId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ values: newValues }),
+          });
+          showToast('Yozuv yangilandi');
+          await loadPortionEntriesAdmin();
+        } catch (err) {
+          showToast('Xato: ' + err.message, true);
+        }
+      });
+    }
+
+    document.getElementById('pe-search-btn').addEventListener('click', loadPortionEntriesAdmin);
 
     document.getElementById('pi-add-btn').addEventListener('click', async () => {
       const displayName = document.getElementById('pi-display-name').value.trim();
@@ -472,6 +605,8 @@
       try {
         const data = await apiFetch('/spots');
         spotsList = data.spots;
+        spotsById = {};
+        spotsList.forEach((s) => { spotsById[s.spot_id] = s.name; });
 
         document.getElementById('new-spots-checks').innerHTML = spotsList.map((s) => `
           <label class="spot-check-item">
@@ -486,6 +621,7 @@
           '<option value="0">Barchasi (global - tavsiya etiladi)</option>' + optionsHtml;
         document.getElementById('ce-spot-select').innerHTML = '<option value="">Barchasi</option>' + optionsHtml;
         document.getElementById('pm-spot-select').innerHTML = '<option value="">Barchasi</option>' + optionsHtml;
+        document.getElementById('pe-spot-select').innerHTML = '<option value="">Barchasi</option>' + optionsHtml;
       } catch (e) {
         showToast('Filiallarni yuklab bo\'lmadi: ' + e.message, true);
       }
@@ -1138,6 +1274,11 @@
       await loadProducts();
       await loadPortionIngredients();
       await loadPosterIngredientsForSelect();
+
+      document.getElementById('pe-from').value = todayStr();
+      document.getElementById('pe-to').value = todayStr();
+      await loadPortionEntriesAdmin();
+
       await loadUsers();
 
       if (spotsList.length) {
@@ -1148,5 +1289,6 @@
       await loadCashEntries();
     })();
   </script>
+<script src="/js/pwa.js"></script>
 </body>
 </html>
