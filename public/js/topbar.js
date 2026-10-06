@@ -34,6 +34,7 @@ function renderTopbar(activePage) {
   `).join('');
 
   document.body.classList.add('has-sidebar');
+  startHeartbeat();
 
   // ===== 1) Kompyuter uchun: doimiy chap yon panel =====
   const sidebar = document.createElement('div');
@@ -115,4 +116,70 @@ function renderTopbar(activePage) {
     const nowDark = document.documentElement.getAttribute('data-theme') !== 'light';
     applyTheme(nowDark ? 'light' : 'dark');
   });
+}
+
+
+// ============ Sessiya signali (Kirish tarixi uchun) ============
+// Sahifa ochiq turganda har 2 daqiqada serverga "men shu yerdaman" signali yuboradi va
+// shu oraliqda sahifa ekranda ko'rinib (faol) / fonda turgan soniyalarni xabar qiladi.
+// Foydalanuvchi 3 soat hech narsa qilmasa, signal to'xtatiladi (kechasi ochiq qolgan
+// oynalar bazani band qilmasligi uchun) va yangi harakatda qayta boshlanadi.
+const HEARTBEAT_INTERVAL_MS = (window.KPI_HEARTBEAT_MS && Number(window.KPI_HEARTBEAT_MS)) || 120000;
+const HEARTBEAT_IDLE_LIMIT_MS = 3 * 60 * 60 * 1000;
+let _hbStarted = false;
+
+function startHeartbeat() {
+  if (_hbStarted) return;
+  const sessionId = Number(localStorage.getItem('kpi_session_id'));
+  if (!sessionId) return; // eski sessiya (signal tizimidan oldin kirgan) - kuzatilmaydi
+  _hbStarted = true;
+
+  let lastTick = Date.now();
+  let lastInteraction = Date.now();
+  let visibleMs = 0;
+  let hiddenMs = 0;
+
+  // Oxirgi o'lchovdan beri o'tgan vaqtni joriy holatga (ko'rinadi / fonda) yozib boramiz
+  function accumulate() {
+    const now = Date.now();
+    const elapsed = Math.max(0, now - lastTick);
+    lastTick = now;
+    if (document.visibilityState === 'hidden') hiddenMs += elapsed;
+    else visibleMs += elapsed;
+  }
+
+  function send(keepalive) {
+    accumulate();
+    const state = document.visibilityState === 'hidden' ? 'hidden' : 'visible';
+    // Butun soniyalarni yuboramiz, kasr qismi (qoldiq) keyingi signalga o'tadi - vaqt yo'qolmaydi
+    const visibleSec = Math.floor(visibleMs / 1000);
+    const hiddenSec = Math.floor(hiddenMs / 1000);
+    visibleMs -= visibleSec * 1000;
+    hiddenMs -= hiddenSec * 1000;
+    const body = { session_id: sessionId, state, visible_seconds: visibleSec, hidden_seconds: hiddenSec };
+    const token = getToken();
+    if (!token) return;
+    fetch('/api/auth/heartbeat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify(body),
+      keepalive: !!keepalive,
+    }).catch(() => {});
+  }
+
+  ['mousemove', 'keydown', 'touchstart', 'scroll', 'click'].forEach((evt) => {
+    window.addEventListener(evt, () => { lastInteraction = Date.now(); }, { passive: true });
+  });
+
+  setInterval(() => {
+    if (Date.now() - lastInteraction > HEARTBEAT_IDLE_LIMIT_MS) {
+      lastTick = Date.now(); // faolsiz vaqt hisoblanmaydi
+      return;
+    }
+    send(false);
+  }, HEARTBEAT_INTERVAL_MS);
+
+  // Sahifa fonga o'tganda/qaytganda darhol signal (telefon ekrani o'chsa ham oxirgi holat qoladi)
+  document.addEventListener('visibilitychange', () => send(document.visibilityState === 'hidden'));
+  window.addEventListener('pagehide', () => send(true));
 }

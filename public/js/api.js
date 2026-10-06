@@ -12,13 +12,15 @@ function getUser() {
     return null;
   }
 }
-function setSession(token, user) {
+function setSession(token, user, sessionId) {
   localStorage.setItem('kpi_token', token);
   localStorage.setItem('kpi_user', JSON.stringify(user));
+  if (sessionId) localStorage.setItem('kpi_session_id', String(sessionId));
 }
 function clearSession() {
   localStorage.removeItem('kpi_token');
   localStorage.removeItem('kpi_user');
+  localStorage.removeItem('kpi_session_id');
 }
 function requireAuth() {
   if (!getToken()) {
@@ -90,6 +92,28 @@ async function apiFetch(path, options = {}) {
 
 function formatMoney(n) {
   return Number(n || 0).toLocaleString('ru-RU') + " so'm";
+}
+
+// Kassa farqini ko'rsatish qoidasi (butun saytda bir xil). diff = Fakt - Poster.
+//   Fakt Posterdan KO'P  -> qizil, MINUS bilan   (masalan "-23 000")
+//   Fakt Posterdan KAM   -> sariq, ishorasiz     (masalan "23 000")
+//   Teng (1000 so'mgacha)-> yashil, ishorasiz
+function formatDiffDisplay(diff, tolerance = 1000) {
+  const value = Math.round(Number(diff) || 0);
+  const abs = Math.abs(value).toLocaleString('ru-RU');
+  if (Math.abs(value) < tolerance) return { text: abs, cls: 'diff-eq' };
+  if (value > 0) return { text: '-' + abs, cls: 'diff-over' };
+  return { text: abs, cls: 'diff-under' };
+}
+
+// Soniyalarni "3 s 26 d" ko'rinishiga o'tkazadi (soat / daqiqa)
+function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined) return '—';
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  if (h === 0 && m === 0) return total > 0 ? '<1 d' : '0 d';
+  return h > 0 ? `${h} s ${String(m).padStart(2, '0')} d` : `${m} d`;
 }
 
 function todayStr() {

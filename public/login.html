@@ -54,7 +54,7 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Login xato');
 
-        setSession(data.token, data.user);
+        setSession(data.token, data.user, data.session_id);
         window.location.href = data.user.role === 'admin' ? '/dashboard.html' : '/dashboard.html';
       } catch (err) {
         errorEl.textContent = err.message;

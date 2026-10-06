@@ -117,7 +117,7 @@
 
     <div class="section journal-section" id="journal-section" style="margin-top:24px;">
       <div class="journal-head">
-        <h2>Kassa jurnali — <span id="journal-spot-name"></span></h2>
+        <h2>Kassa jurnali — <span id="journal-spot-name"></span> <span class="badge neutral">oxirgi 90 kun</span></h2>
       </div>
       <p class="journal-sub">Har bir kun uchun umumiy kassa. Sana ustiga bosing — yuqoridagi forma shu kun ma'lumotlari bilan to'ladi.</p>
       <table>
@@ -128,8 +128,8 @@
     </div>
 
     <div class="section" id="diff-journal-section" style="margin-top:24px;">
-      <h2 style="margin-top:0;">Farq jurnali — <span id="diff-journal-spot-name"></span></h2>
-      <p class="journal-sub">Har bir kun uchun Poster bilan solishtirilgan umumiy farq tarixi (Fakt − Poster).</p>
+      <h2 style="margin-top:0;">Farq jurnali — <span id="diff-journal-spot-name"></span> <span class="badge neutral">oxirgi 90 kun</span></h2>
+      <p class="journal-sub">Har bir kun uchun Poster bilan solishtirilgan umumiy farq tarixi. Qizil "-" — Fakt Posterdan ko'p, sariq — Fakt Posterdan kam.</p>
       <table>
         <thead><tr><th>Sana</th><th>Fakt</th><th>Poster</th><th>Farq</th><th>Holat</th></tr></thead>
         <tbody id="diff-journal-body"></tbody>
@@ -400,10 +400,9 @@
           subEl.innerHTML = `Xodim kiritgan (Fakt) va Poster'dagi haqiqiy to'lovlar. ${statusText}`;
           const tbody = document.getElementById('compare-body');
           const rowsHtml = data.rows.map((r) => {
-            const diff = r.fakt - r.poster;
-            const ok = Math.abs(diff) < 1000;
-            const diffClass = ok ? 'diff-pos' : 'diff-neg';
-            const diffText = (diff > 0 ? '+' : '') + Math.round(diff).toLocaleString('ru-RU');
+            const fd = formatDiffDisplay(r.fakt - r.poster);
+            const diffClass = fd.cls;
+            const diffText = fd.text;
             const rowClass = r.level === 'total' ? 'row-total' : r.level === 'subtotal' ? 'row-subtotal' : '';
             const nameCell = r.level === 'detail' ? `<td class="indent">${r.name}</td>` : `<td>${r.name}</td>`;
             let html = `<tr class="${rowClass}">
@@ -577,7 +576,7 @@
 
       const today = todayStr();
       const monthAgo = new Date();
-      monthAgo.setDate(monthAgo.getDate() - 30);
+      monthAgo.setDate(monthAgo.getDate() - 90);
       const from = monthAgo.toISOString().slice(0, 10);
 
       try {
@@ -621,7 +620,7 @@
 
       const today = todayStr();
       const monthAgo = new Date();
-      monthAgo.setDate(monthAgo.getDate() - 30);
+      monthAgo.setDate(monthAgo.getDate() - 90);
       const from = monthAgo.toISOString().slice(0, 10);
 
       try {
@@ -644,13 +643,19 @@
               <td><span class="badge neutral">Kutilmoqda</span></td>
             </tr>`;
           }
-          const diffClass = Math.abs(e.diff) < 1000 ? 'diff-pos' : 'diff-neg';
-          const diffText = (e.diff > 0 ? '+' : '') + Math.round(e.diff).toLocaleString('ru-RU');
+          if (e.notComputed) {
+            return `<tr>
+              <td>${e.date}</td>
+              <td colspan="3" style="color:var(--text-dim);">Poster bilan solishtirish hali hisoblanmagan</td>
+              <td><span class="badge pending">Hisoblanmoqda</span></td>
+            </tr>`;
+          }
+          const fd = formatDiffDisplay(e.diff);
           return `<tr>
             <td>${e.date}</td>
             <td>${formatMoney(e.fakt)}</td>
             <td style="color:var(--text-dim);">${formatMoney(e.poster)}</td>
-            <td class="${diffClass}">${diffText}</td>
+            <td class="${fd.cls}">${fd.text}</td>
             <td>${Math.abs(e.diff) < 1000
               ? '<span class="badge ok">Mos</span>'
               : '<span class="badge bad">Farq bor</span>'}</td>
@@ -766,13 +771,12 @@
         emptyEl.style.display = 'none';
 
         tbody.innerHTML = data.rows.map((r) => {
-          const cls = r.total_diff === 0 ? 'diff-pos' : 'diff-neg';
-          const clsAvg = r.avg_diff === 0 ? 'diff-pos' : 'diff-neg';
-          const fmt = (v) => (v > 0 ? '+' : '') + v.toLocaleString('ru-RU');
+          const td = formatDiffDisplay(r.total_diff);
+          const ad = formatDiffDisplay(r.avg_diff);
           return `<tr>
             <td><b>${spotsById[r.spot_id] || r.spot_id}</b></td>
-            <td style="text-align:right;" class="${cls}">${fmt(r.total_diff)}</td>
-            <td style="text-align:right;" class="${clsAvg}">${fmt(r.avg_diff)}</td>
+            <td style="text-align:right;" class="${td.cls}">${td.text}</td>
+            <td style="text-align:right;" class="${ad.cls}">${ad.text}</td>
           </tr>`;
         }).join('');
       } catch (e) {

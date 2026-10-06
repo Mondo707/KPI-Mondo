@@ -38,6 +38,24 @@
       <button class="btn-primary apply-btn" id="apply-btn" style="max-width:140px;">Qo'llash</button>
     </div>
 
+    <div class="section" id="bonus-status-section" style="display:none;">
+      <h2 style="margin-top:0;">Bonus holati — <span id="bonus-status-period"></span></h2>
+      <p class="journal-sub">Tanlangan davr uchun hisoblangan bonus qanday taqsimlangani. Kassa Poster bilan solishtirilgandan keyin "Berildi" yoki "Berilmadi" bo'ladi.</p>
+      <div class="bonus-status-cards">
+        <div class="bsc total"><div class="l">Hisoblangan jami</div><div class="v" id="bs-calculated">0</div><div class="s">davr uchun barcha bonus</div></div>
+        <div class="bsc given"><div class="l">Berildi</div><div class="v" id="bs-given">0</div><div class="s">kassa tekshirilgan, farq me'yorda</div></div>
+        <div class="bsc held"><div class="l">Berilmadi</div><div class="v" id="bs-held">0</div><div class="s">kassa farqi chegaradan oshgani uchun</div></div>
+        <div class="bsc pending"><div class="l">Tekshirilmagan</div><div class="v" id="bs-pending">0</div><div class="s" id="bs-pending-sub">kassa kiritilmagan yoki hali solishtirilmagan</div></div>
+      </div>
+      <div id="bonus-days-wrap" style="display:none;">
+        <p class="journal-sub" style="margin-bottom:6px;">Berilmagan va tekshirilmagan kunlar</p>
+        <table class="stack-mobile">
+          <thead><tr><th>Sana</th><th>Filial</th><th style="text-align:right;">Bonus</th><th>Holat</th><th>Sabab</th></tr></thead>
+          <tbody id="bonus-days-body"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="receipt-wrap" id="receipt-wrap" style="display:none;">
       <div class="receipt">
         <div class="r-title" id="receipt-spot-name"></div>
@@ -47,6 +65,7 @@
         <div id="receipt-lines"></div>
         <hr class="r-divider">
         <div class="r-total"><span class="l">Jami bonus</span><span class="v" id="receipt-total">0</span></div>
+        <div class="r-pending" id="receipt-pending" style="display:none; font-size:12px; color:#f59e0b; text-align:center; margin-top:6px;"></div>
         <div class="r-status" id="receipt-status"></div>
       </div>
     </div>
@@ -56,7 +75,7 @@
         <h2>Kunlik bonus jurnali — <span id="journal-spot-name"></span></h2>
         <div class="month-total">Tanlangan davr: <b id="journal-total">0 so'm</b></div>
       </div>
-      <p class="journal-sub">Har bir kun uchun jami bonus (barcha kategoriyalar yig'indisi) va kassa holati. Sana ustiga bosing — yuqorida shu kunlik chek ko'rinadi.</p>
+      <p class="journal-sub">Har bir kun uchun jami bonus (faqat "To'landi" kunlar yig'indiga kiradi) va kassa holati. Sana ustiga bosing — yuqorida shu kunlik chek ko'rinadi.</p>
       <table>
         <thead>
           <tr><th>Sana</th><th>Jami bonus</th><th>Holat</th></tr>
@@ -145,12 +164,60 @@
       try {
         const data = await apiFetch('/bonus?' + params.toString());
         document.getElementById('rows-count').textContent = data.count;
+        renderBonusStatus(data, date_from, date_to);
         renderProgress(data.rows, date_from, date_to, spot_id);
         renderReceipt(data.rows, date_from, date_to, spot_id);
         await loadJournal(spot_id, date_from, date_to, category);
       } catch (e) {
         showToast('Ma\'lumot yuklashda xato: ' + e.message, true);
       }
+    }
+
+    const REASON_TEXT = {
+      no_entry: 'Kassa kiritilmagan',
+      waiting: 'Kassa kiritilgan, Poster bilan solishtirish kutilmoqda',
+    };
+
+    // Davr bo'yicha: hisoblangan / berildi / berilmadi / tekshirilmagan
+    function renderBonusStatus(data, date_from, date_to) {
+      const sec = document.getElementById('bonus-status-section');
+      const sm = data.summary || { calculated: 0, given: 0, held: 0, pending: 0, pending_no_entry: 0, pending_waiting: 0 };
+      sec.style.display = 'block';
+      document.getElementById('bonus-status-period').textContent =
+        date_from === date_to ? date_from : `${date_from} — ${date_to}`;
+      document.getElementById('bs-calculated').textContent = formatMoney(sm.calculated);
+      document.getElementById('bs-given').textContent = formatMoney(sm.given);
+      document.getElementById('bs-held').textContent = formatMoney(sm.held);
+      document.getElementById('bs-pending').textContent = formatMoney(sm.pending);
+
+      const parts = [];
+      if (sm.pending_no_entry > 0) parts.push(`kassa kiritilmagan: ${formatMoney(sm.pending_no_entry)}`);
+      if (sm.pending_waiting > 0) parts.push(`solishtirish kutilmoqda: ${formatMoney(sm.pending_waiting)}`);
+      document.getElementById('bs-pending-sub').textContent =
+        parts.length ? parts.join(' · ') : 'kassa kiritilmagan yoki hali solishtirilmagan';
+
+      const wrap = document.getElementById('bonus-days-wrap');
+      const body = document.getElementById('bonus-days-body');
+      const days = data.days || [];
+      if (!days.length) { wrap.style.display = 'none'; body.innerHTML = ''; return; }
+      wrap.style.display = 'block';
+      body.innerHTML = days.map((d) => {
+        const badge = d.status === 'held'
+          ? '<span class="badge bad">Berilmadi</span>'
+          : '<span class="badge pending">Tekshirilmagan</span>';
+        const reason = d.status === 'held'
+          ? (d.diff_percent !== null && d.diff_percent !== undefined
+              ? `Kassa farqi ${d.diff_percent}% (chegara ${data.limit_percent}%)`
+              : 'Kassa farqi chegaradan oshgan')
+          : (REASON_TEXT[d.reason] || '');
+        return `<tr>
+          <td>${d.date}</td>
+          <td>${spotsById[d.spot_id] || ('#' + d.spot_id)}</td>
+          <td style="text-align:right;">${formatMoney(d.bonus)}</td>
+          <td>${badge}</td>
+          <td>${reason}</td>
+        </tr>`;
+      }).join('');
     }
 
     // Kunlik bonus jurnali — faqat bitta filial tanlanganda ko'rsatiladi
@@ -187,9 +254,11 @@
           tr.innerHTML = `
             <td>${e.date}</td>
             <td>${formatMoney(e.bonus)}</td>
-            <td>${e.ok
+            <td>${e.status === 'given'
               ? '<span class="badge ok">To\'landi</span>'
-              : '<span class="badge bad">To\'lanmadi (kassa farqi)</span>'}</td>
+              : e.status === 'held'
+                ? '<span class="badge bad">To\'lanmadi (kassa farqi)</span>'
+                : '<span class="badge pending">Tekshirilmagan</span> <span style="font-size:11px;color:var(--text-dim);">' + (REASON_TEXT[e.reason] || '') + '</span>'}</td>
           `;
           tr.addEventListener('click', () => showReceiptForDate(e.date, spot_id, category));
           tbody.appendChild(tr);
@@ -280,7 +349,7 @@
           <div class="tier-meta">
             <span class="tier-level-badge ${idx === -1 ? 'none' : ''}">${idx === -1 ? "Pog'ona yo'q" : (idx + 1) + '-daraja'}</span>
           </div>
-          <div class="p-bonus">${formatMoney(row && row.cash_diff_ok !== 0 ? currentBonus : 0)}</div>
+          <div class="p-bonus">${formatMoney(row && row.status !== 'held' ? currentBonus : 0)}</div>
           <div class="p-hint">${hint}</div>
         `;
         grid.appendChild(card);
@@ -307,12 +376,13 @@
       const byCategory = new Map();
       rows.forEach((r) => {
         if (!byCategory.has(r.category)) {
-          byCategory.set(r.category, { quantity: 0, bonus: 0, cashDiffOk: true });
+          byCategory.set(r.category, { quantity: 0, bonus: 0, pendingBonus: 0, hasHeld: false });
         }
         const acc = byCategory.get(r.category);
         acc.quantity += r.quantity;
-        acc.bonus += r.cash_diff_ok ? r.bonus : 0;
-        if (!r.cash_diff_ok) acc.cashDiffOk = false;
+        if (r.status === 'given') acc.bonus += r.bonus;
+        else if (r.status === 'pending') acc.pendingBonus += r.bonus;
+        else if (r.status === 'held') acc.hasHeld = true;
       });
 
       const orderedCats = sortByCategoryOrder([...byCategory.keys()]).filter(
@@ -335,11 +405,23 @@
       const total = orderedCats.reduce((sum, c) => sum + byCategory.get(c).bonus, 0);
       document.getElementById('receipt-total').textContent = formatMoney(total);
 
-      const anyBad = orderedCats.some((c) => !byCategory.get(c).cashDiffOk);
+      const pendingTotal = orderedCats.reduce((sum, c) => sum + byCategory.get(c).pendingBonus, 0);
+      const pendingEl = document.getElementById('receipt-pending');
+      if (pendingTotal > 0) {
+        pendingEl.style.display = 'block';
+        pendingEl.textContent = `Tekshiruvda: ${formatMoney(pendingTotal)} (kassa hali solishtirilmagan)`;
+      } else {
+        pendingEl.style.display = 'none';
+      }
+
+      const anyHeld = orderedCats.some((c) => byCategory.get(c).hasHeld);
       const statusEl = document.getElementById('receipt-status');
-      if (anyBad) {
+      if (anyHeld) {
         statusEl.className = 'r-status bad';
-        statusEl.innerHTML = '<b>Bonus to\'lanmaydi</b>Kassa farqi belgilangan me\'yordan oshgan.';
+        statusEl.innerHTML = '<b>Bonusning bir qismi to\'lanmaydi</b>Ba\'zi kunlarda kassa farqi belgilangan me\'yordan oshgan.';
+      } else if (pendingTotal > 0) {
+        statusEl.className = 'r-status';
+        statusEl.innerHTML = '<b>Tekshiruv kutilmoqda</b>Kassa Poster bilan solishtirilgach, bonus tasdiqlanadi.';
       } else {
         statusEl.className = 'r-status ok';
         statusEl.innerHTML = '<b>Bonus to\'lanadi</b>Kassa farqi me\'yor ichida — nazorat filtri o\'tdi.';

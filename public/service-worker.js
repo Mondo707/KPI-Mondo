@@ -1,12 +1,13 @@
 // KPI Bonus - Service Worker
 //
-// MUHIM: bu ilova doim JONLI ma'lumot (KPI, kassa, bonus) bilan ishlaydi,
-// shuning uchun API so'rovlari (/api/...) HECH QACHON keshlanmaydi - har doim
-// tarmoqdan yangi ma'lumot olinadi. Faqat DIZAYN fayllari (CSS, JS, rasmlar)
-// tezroq yuklanishi uchun keshlanadi.
+// MUHIM: bu ilova doim JONLI ma'lumot (KPI, kassa, bonus) bilan ishlaydi.
+//  - API so'rovlari (/api/...) HECH QACHON keshlanmaydi.
+//  - Sahifalar, CSS va JS fayllari "tarmoqdan birinchi" olinadi: internet bor bo'lsa har doim
+//    eng yangi versiya ishlaydi (eskirgan kod yangi API bilan aralashib, noto'g'ri
+//    ma'lumot ko'rsatmasligi uchun). Kesh faqat internet YO'Q paytda zaxira sifatida ishlatiladi.
 
-const CACHE_NAME = 'kpi-bonus-v6';
-const STATIC_ASSETS = [
+const CACHE_NAME = 'kpi-bonus-v7';
+const PRECACHE = [
   '/css/style.css',
   '/js/api.js',
   '/js/topbar.js',
@@ -18,7 +19,7 @@ const STATIC_ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)).catch(() => {})
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE)).catch(() => {})
   );
   self.skipWaiting();
 });
@@ -33,24 +34,22 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  const req = event.request;
+  if (req.method !== 'GET') return;
 
-  // API so'rovlari - hech qachon keshlanmaydi, doim tarmoqdan
-  if (url.pathname.startsWith('/api/')) {
-    return; // brauzerning o'z odatiy tarmoq so'roviga qoldiramiz
-  }
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api/')) return; // API - brauzerning odatiy tarmoq so'roviga qoldiramiz
 
-  // Statik fayllar (CSS/JS/rasm) - avval keshdan, bo'lmasa tarmoqdan
-  if (STATIC_ASSETS.some((asset) => url.pathname === asset)) {
-    event.respondWith(
-      caches.match(event.request).then((cached) => cached || fetch(event.request))
-    );
-    return;
-  }
-
-  // HTML sahifalar - avval tarmoqdan (eng yangi holatni ko'rsatish uchun),
-  // faqat internet yo'q bo'lsa keshdan
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(req)
+      .then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
+        }
+        return res;
+      })
+      .catch(() => caches.match(req))
   );
 });

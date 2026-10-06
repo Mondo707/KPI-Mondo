@@ -301,6 +301,38 @@ tr:hover td { background: var(--card-hover); }
 .badge.ok { background: rgba(34,197,94,0.15); color: var(--success); }
 .badge.bad { background: rgba(239,68,68,0.15); color: var(--danger); }
 .badge.neutral { background: var(--card-hover); color: var(--text-dim); }
+.badge.pending { background: rgba(245,158,11,0.16); color: #f59e0b; }
+
+/* Kassa farqi ranglari: ko'p = qizil (minus bilan), kam = sariq (ishorasiz), teng = yashil */
+.diff-over { color: var(--danger); font-weight: 600; }
+.diff-under { color: var(--accent); font-weight: 600; }
+.diff-eq { color: var(--success); font-weight: 600; }
+
+/* KPI: davr bo'yicha bonus holati kartalari */
+.bonus-status-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.bsc {
+  background: linear-gradient(160deg, var(--card), var(--card-hover));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 13px;
+}
+.bsc .l { font-size: 11.5px; color: var(--text-dim); margin-bottom: 6px; }
+.bsc .v { font-size: 20px; font-weight: 800; }
+.bsc .s { font-size: 10.5px; color: var(--text-dim); margin-top: 5px; line-height: 1.35; }
+.bsc.total .v { color: var(--accent); }
+.bsc.given .v { color: var(--success); }
+.bsc.held .v { color: var(--danger); }
+.bsc.pending .v { color: #f59e0b; }
+
+/* Kirish tarixi: sessiya holati */
+.badge.session-online { background: rgba(34,197,94,0.15); color: var(--success); }
+.badge.session-background { background: rgba(245,158,11,0.16); color: #f59e0b; }
+.badge.session-closed { background: rgba(135,145,171,0.18); color: var(--text-dim); }
 
 .spot-checks {
   display: grid;
@@ -942,4 +974,31 @@ td.indent { padding-left: 26px; color: var(--text-dim); }
 @media (max-width: 500px) {
   .pwa-install-banner { flex-direction: column; align-items: stretch; }
   .pwa-install-actions { justify-content: flex-end; }
+}
+
+
+/* Tor ekranda 5 ustunli jadval o'rniga har bir qator ixcham karta (hech narsa yashirinmaydi, surish shart emas).
+   Faqat class="stack-mobile" bo'lgan jadvallarga tegishli; kompyuterda oddiy jadval. */
+@media (max-width: 760px) {
+  table.stack-mobile { display: block; overflow: visible; background: transparent; border: none; }
+  table.stack-mobile thead { display: none; }
+  table.stack-mobile tbody { display: block; }
+  table.stack-mobile tr {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas: "date spot bonus" "status status status" "reason reason reason";
+    gap: 6px 10px;
+    align-items: center;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  table.stack-mobile td { display: block; padding: 0; border: none; text-align: left !important; }
+  table.stack-mobile td:nth-child(1) { grid-area: date; font-size: 12px; color: var(--text-dim); }
+  table.stack-mobile td:nth-child(2) { grid-area: spot; font-weight: 700; }
+  table.stack-mobile td:nth-child(3) { grid-area: bonus; font-weight: 700; text-align: right !important; }
+  table.stack-mobile td:nth-child(4) { grid-area: status; }
+  table.stack-mobile td:nth-child(5) { grid-area: reason; font-size: 12px; color: var(--text-dim); }
 }
