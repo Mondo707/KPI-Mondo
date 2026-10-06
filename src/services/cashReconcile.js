@@ -230,6 +230,13 @@ async function getComparison(entry, options = {}) {
     return { locked: true, unlock_at: unlockTime(entry) };
   }
 
+  // "Faqat keshdan" rejimi: hisoblanmagan yozuv uchun Poster'ga MUROJAAT QILMAYDI
+  // (Farq jurnali kabi uzoq ro'yxatlar uchun - sekin ishlamasligi va Poster'ni
+  // ko'p so'rov bilan yuklamasligi uchun). Hisoblashni fon vazifasi bajaradi.
+  if (options.cachedOnly && !entry.poster_snapshot) {
+    return { locked: false, notComputed: true };
+  }
+
   let snapshot;
   if (entry.poster_snapshot) {
     snapshot = JSON.parse(entry.poster_snapshot);
@@ -304,6 +311,12 @@ async function getComparison(entry, options = {}) {
     entry.date,
     entry.spot_id,
   ]);
+  // Solishtirish natijasini kassa yozuvining o'ziga ham saqlaymiz: KPI sahifasi
+  // "berildi / berilmadi / tekshirilmagan" holatini aynan shu yerdan oladi.
+  await pool.query(
+    'UPDATE cash_entries SET check_ok = $1, check_diff_percent = $2, checked_at = now() WHERE id = $3',
+    [cashDiffOk ? 1 : 0, diffPercent, entry.id]
+  );
 
   return {
     locked: false,
@@ -375,4 +388,73 @@ async function getBranchDiffReport(spotIds, dateFrom, dateTo) {
   });
 }
 
-module.exports = { getComparison, isLocked, unlockTime, RECONCILE_DELAY_HOURS, fetchTransactionsForBusinessDay, getBranchDiffReport };
+/**
+ * Fon vazifasi: 6 soatlik qulf o'tgan, lekin hali solishtirilmagan kassa yozuvlarini
+ * AVTOMATIK hisoblaydi. Shunda bonus holati (berildi/berilmadi) hech kim sahifani
+ * ochishini kutmaydi.
+ *  1) Keshi bor, lekin natijasi saqlanmagan eski yozuvlar - faqat bazadan (Poster'ga so'rovsiz).
+ *  2) Keshi yo'q yozuvlar - Poster'dan, har safar eng ko'pi bilan maxPosterFetches ta
+ *     (Poster'ga yuk kichik bo'lishi uchun). Poster xato bersa, shu tsiklda to'xtaydi.
+ */
+async function computePendingComparisons(maxPosterFetches = 6) {
+  const stats = { cached: 0, fetched: 0, errors: 0 };
+
+  const cachedRes = await pool.query(
+    `SELECT * FROM cash_entries
+     WHERE poster_snapshot IS NOT NULL AND check_ok IS NULL
+       AND created_at <= now() - ($1::float * interval '1 hour')
+     ORDER BY date ASC LIMIT 100`,
+    [RECONCILE_DELAY_HOURS]
+  );
+  for (const row of cachedRes.rows) {
+    try {
+      await getComparison(row, { forceUnlock: false });
+      stats.cached += 1;
+    } catch (e) {
+      stats.errors += 1;
+      console.error('[cash-check] Keshdan hisoblashda xato:', e.message);
+    }
+  }
+
+  const pendingRes = await pool.query(
+    `SELECT * FROM cash_entries
+     WHERE poster_snapshot IS NULL
+       AND created_at <= now() - ($1::float * interval '1 hour')
+     ORDER BY created_at ASC LIMIT $2`,
+    [RECONCILE_DELAY_HOURS, maxPosterFetches]
+  );
+  for (const row of pendingRes.rows) {
+    try {
+      await getComparison(row, { forceUnlock: false });
+      stats.fetched += 1;
+    } catch (e) {
+      stats.errors += 1;
+      console.error('[cash-check] Poster bilan solishtirishda xato (bu tsikl to\'xtatildi):', e.message);
+      break;
+    }
+  }
+
+  return stats;
+}
+
+/**
+ * Admin kassa farqi chegarasini o'zgartirganda: allaqachon hisoblangan barcha kunlarni
+ * SAQLANGAN farq foizi bo'yicha qayta baholaydi (Poster'ga so'rovsiz), shunda eski
+ * va yangi kunlar bir xil chegara bilan baholanadi.
+ */
+async function reapplyCashDiffLimit(limitPercent) {
+  await pool.query(
+    'UPDATE cash_entries SET check_ok = CASE WHEN check_diff_percent <= $1 THEN 1 ELSE 0 END WHERE check_diff_percent IS NOT NULL',
+    [limitPercent]
+  );
+  await pool.query(
+    `UPDATE daily_bonus d SET cash_diff_ok = c.check_ok
+     FROM cash_entries c
+     WHERE c.date = d.date AND c.spot_id = d.spot_id AND c.check_ok IS NOT NULL`
+  );
+}
+
+module.exports = {
+  getComparison, isLocked, unlockTime, RECONCILE_DELAY_HOURS, fetchTransactionsForBusinessDay,
+  getBranchDiffReport, computePendingComparisons, reapplyCashDiffLimit,
+};

@@ -2,6 +2,25 @@ const express = require('express');
 const { pool } = require('../db/db');
 const { authRequired, requireAnySection } = require('../middleware/auth');
 const { getEffectiveCategories } = require('../services/configService');
+const { getSettingNumber } = require('../services/appSettings');
+
+/**
+ * Bitta (kun + filial) uchun bonus holatini aniqlaydi - butun saytda YAGONA qoida:
+ *   given   - kassa Poster bilan solishtirilgan va farq chegara ichida  -> BERILDI
+ *   held    - kassa solishtirilgan va farq chegaradan oshgan             -> BERILMADI
+ *   pending - tekshirilmagan: kassa kiritilmagan YOKI hali solishtirilmagan -> TEKSHIRILMAGAN
+ * Manba: cash_entries.check_ok. (Eski yozuvlarda u bo'sh, lekin keshi bor bo'lsa, daily_bonus
+ * belgisiga tayaniladi - fon vazifasi ularni bir necha daqiqada yangilab chiqadi.)
+ */
+function classifyDay(r) {
+  if (r.cash_id === null || r.cash_id === undefined) return { status: 'pending', reason: 'no_entry' };
+  let check = r.check_ok;
+  if (check === null || check === undefined) {
+    check = r.has_snapshot ? r.cash_diff_ok : null;
+  }
+  if (check === null || check === undefined) return { status: 'pending', reason: 'waiting' };
+  return check ? { status: 'given', reason: null } : { status: 'held', reason: 'diff' };
+}
 
 const router = express.Router();
 
@@ -28,26 +47,36 @@ router.get('/journal', authRequired, requireAnySection('kpi'), async (req, res) 
   let categoryClause = '';
   if (category) {
     params.push(category);
-    categoryClause = `AND category = $${params.length}`;
+    categoryClause = `AND d.category = $${params.length}`;
   }
 
   const result = await pool.query(
-    `SELECT date,
-            SUM(CASE WHEN cash_diff_ok = 1 THEN bonus ELSE 0 END) AS calc_bonus,
-            MIN(cash_diff_ok) AS ok
-     FROM daily_bonus
-     WHERE spot_id = $1 AND date >= $2 AND date <= $3 ${categoryClause}
-     GROUP BY date
-     ORDER BY date DESC`,
+    `SELECT d.date,
+            SUM(d.bonus) AS calc_bonus,
+            MIN(d.cash_diff_ok) AS cash_diff_ok,
+            c.id AS cash_id, c.check_ok, c.check_diff_percent,
+            (c.poster_snapshot IS NOT NULL) AS has_snapshot
+     FROM daily_bonus d
+     LEFT JOIN cash_entries c ON c.date = d.date AND c.spot_id = d.spot_id
+     WHERE d.spot_id = $1 AND d.date >= $2 AND d.date <= $3 ${categoryClause}
+     GROUP BY d.date, c.id, c.check_ok, c.check_diff_percent, c.poster_snapshot
+     ORDER BY d.date DESC`,
     params
   );
 
-  const entries = result.rows.map((r) => ({
-    date: r.date,
-    bonus: r.ok ? Number(r.calc_bonus) : 0,
-    calc_bonus: Number(r.calc_bonus),
-    ok: !!r.ok,
-  }));
+  const entries = result.rows.map((r) => {
+    const { status, reason } = classifyDay(r);
+    const calc = Number(r.calc_bonus);
+    return {
+      date: r.date,
+      bonus: status === 'given' ? calc : 0,
+      calc_bonus: calc,
+      status,
+      reason,
+      diff_percent: r.check_diff_percent === null ? null : Math.round(Number(r.check_diff_percent) * 100) / 100,
+      ok: status === 'given',
+    };
+  });
 
   const total = entries.reduce((sum, e) => sum + e.bonus, 0);
 
@@ -67,20 +96,20 @@ router.get('/', authRequired, requireAnySection('kpi', 'daily_sales'), async (re
   const params = [];
   let i = 1;
 
-  conditions.push(`date >= $${i++}`);
+  conditions.push(`d.date >= $${i++}`);
   params.push(date_from);
-  conditions.push(`date <= $${i++}`);
+  conditions.push(`d.date <= $${i++}`);
   params.push(date_to);
 
   const allowedSpots = req.user.allowed_spots || [];
   if (allowedSpots.length > 0) {
     const placeholders = allowedSpots.map(() => `$${i++}`).join(',');
-    conditions.push(`spot_id IN (${placeholders})`);
+    conditions.push(`d.spot_id IN (${placeholders})`);
     params.push(...allowedSpots);
   }
 
   if (spot_id) {
-    conditions.push(`spot_id = $${i++}`);
+    conditions.push(`d.spot_id = $${i++}`);
     params.push(Number(spot_id));
   }
   if (categories) {
@@ -88,27 +117,67 @@ router.get('/', authRequired, requireAnySection('kpi', 'daily_sales'), async (re
     const categoryList = categories.split(',').map((c) => c.trim()).filter(Boolean);
     if (categoryList.length) {
       const placeholders = categoryList.map(() => `$${i++}`).join(',');
-      conditions.push(`category IN (${placeholders})`);
+      conditions.push(`d.category IN (${placeholders})`);
       params.push(...categoryList);
     }
   } else if (category) {
-    conditions.push(`category = $${i++}`);
+    conditions.push(`d.category = $${i++}`);
     params.push(category);
   }
 
   const sql = `
-    SELECT date, spot_id, category, quantity, bonus, cash_diff_ok
-    FROM daily_bonus
+    SELECT d.date, d.spot_id, d.category, d.quantity, d.bonus, d.cash_diff_ok,
+           c.id AS cash_id, c.check_ok, c.check_diff_percent,
+           (c.poster_snapshot IS NOT NULL) AS has_snapshot
+    FROM daily_bonus d
+    LEFT JOIN cash_entries c ON c.date = d.date AND c.spot_id = d.spot_id
     WHERE ${conditions.join(' AND ')}
-    ORDER BY date DESC, spot_id ASC, category ASC
+    ORDER BY d.date DESC, d.spot_id ASC, d.category ASC
   `;
 
   const result = await pool.query(sql, params);
-  const rows = result.rows.map((r) => ({ ...r, quantity: Number(r.quantity), bonus: Number(r.bonus) }));
 
-  const totalBonus = rows.reduce((sum, r) => sum + (r.cash_diff_ok ? r.bonus : 0), 0);
+  const summary = { calculated: 0, given: 0, held: 0, pending: 0, pending_no_entry: 0, pending_waiting: 0 };
+  const dayMap = new Map(); // "date|spot" -> kun bo'yicha yig'indi (berilmagan kunlar ro'yxati uchun)
 
-  res.json({ rows, total_bonus: totalBonus, count: rows.length });
+  const rows = result.rows.map((r) => {
+    const bonus = Number(r.bonus);
+    const { status, reason } = classifyDay(r);
+
+    summary.calculated += bonus;
+    summary[status] += bonus;
+    if (status === 'pending') summary[reason === 'no_entry' ? 'pending_no_entry' : 'pending_waiting'] += bonus;
+
+    if (status !== 'given') {
+      const key = `${r.date}|${r.spot_id}`;
+      if (!dayMap.has(key)) {
+        dayMap.set(key, {
+          date: r.date, spot_id: r.spot_id, bonus: 0, status, reason,
+          diff_percent: r.check_diff_percent === null ? null : Math.round(Number(r.check_diff_percent) * 100) / 100,
+        });
+      }
+      dayMap.get(key).bonus += bonus;
+    }
+
+    return {
+      date: r.date, spot_id: r.spot_id, category: r.category,
+      quantity: Number(r.quantity), bonus, cash_diff_ok: r.cash_diff_ok,
+      status, reason,
+    };
+  });
+
+  // Faqat bonusi bor (0 dan katta) berilmagan/tekshirilmagan kunlar
+  const days = [...dayMap.values()].filter((d) => d.bonus > 0);
+  const limitPercent = await getSettingNumber('cash_diff_limit_percent', Number(process.env.CASH_DIFF_LIMIT_PERCENT || 0.3));
+
+  res.json({
+    rows,
+    total_bonus: summary.given, // faqat BERILGAN (tekshirilgan va me'yordagi) bonus
+    summary,
+    days,
+    limit_percent: limitPercent,
+    count: rows.length,
+  });
 });
 
 module.exports = router;

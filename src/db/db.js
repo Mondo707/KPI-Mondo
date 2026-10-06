@@ -82,7 +82,7 @@ async function init() {
 
     CREATE TABLE IF NOT EXISTS portion_entries (
       id SERIAL PRIMARY KEY,
-      date DATE NOT NULL,
+      date TEXT NOT NULL,
       spot_id INTEGER NOT NULL,
       values_json TEXT NOT NULL,
       poster_snapshot TEXT,
@@ -148,6 +148,35 @@ async function init() {
 
     ALTER TABLE bonus_config_overrides ADD COLUMN IF NOT EXISTS min_override INTEGER;
     ALTER TABLE bonus_config_overrides ADD COLUMN IF NOT EXISTS max_override INTEGER;
+
+    -- Kassa solishtirish natijasi (bonus holati uchun yagona manba)
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS check_ok INTEGER;
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS check_diff_percent DOUBLE PRECISION;
+    ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS checked_at TIMESTAMP;
+
+    -- Sessiya davomiyligi (kirish tarixi): oxirgi signal, faol/fonda soniyalari
+    ALTER TABLE login_history ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP;
+    ALTER TABLE login_history ADD COLUMN IF NOT EXISTS visible_seconds INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE login_history ADD COLUMN IF NOT EXISTS hidden_seconds INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE login_history ADD COLUMN IF NOT EXISTS last_state TEXT;
+  `);
+
+  // portion_entries.date avval DATE turida edi (API'da "2026-09-30T00:00:00.000Z" bo'lib
+  // chiqardi). Boshqa jadvallar bilan bir xil bo'lishi uchun matnga ('YYYY-MM-DD') o'tkazamiz.
+  // Faqat hali DATE bo'lsa ishlaydi - qayta ishga tushirganda hech narsa o'zgarmaydi.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'portion_entries' AND column_name = 'date' AND data_type = 'date'
+      ) THEN
+        ALTER TABLE portion_entries ALTER COLUMN date TYPE TEXT USING to_char(date, 'YYYY-MM-DD');
+        -- Eski keshlangan Poster qoldiqlari noto'g'ri sana (hisoblangan kun) bilan olingan edi -
+        -- bir martalik tozalash: keyingi ochilishda kiritilgan kun sanasi bilan qayta hisoblanadi.
+        UPDATE portion_entries SET poster_snapshot = NULL, poster_synced_at = NULL;
+      END IF;
+    END $$;
   `);
 }
 

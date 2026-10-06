@@ -69,10 +69,15 @@ router.post('/entry', authRequired, requireSection('cash'), async (req, res) => 
          entered_by = EXCLUDED.entered_by,
          created_at = now(),
          poster_synced_at = NULL,
-         poster_snapshot = NULL`,
+         poster_snapshot = NULL,
+         check_ok = NULL,
+         check_diff_percent = NULL,
+         checked_at = NULL`,
       [date, spot_id, JSON.stringify(expenses), JSON.stringify(banknotes), JSON.stringify(payment_types),
        toza, totalExpense, totalPaytypes, totalAmount, req.user.id]
     );
+    // Yozuv qayta yuborilgan bo'lsa, eski solishtirish natijasi yaroqsiz - neytral holatga qaytaramiz
+    await pool.query('UPDATE daily_bonus SET cash_diff_ok = 1 WHERE date = $1 AND spot_id = $2', [date, spot_id]);
 
     res.json({
       ok: true,
@@ -148,9 +153,13 @@ router.get('/diff-journal', authRequired, requireSection('cash'), async (req, re
   const entries = [];
   for (const row of result.rows) {
     try {
-      const comparison = await getComparison(row, { forceUnlock });
+      // Faqat keshdan: uzoq ro'yxat ochilganda Poster'ga yuzlab so'rov ketmasligi uchun.
+      // Hisoblanmagan kunlarni fon vazifasi (har 15 daqiqada) o'zi hisoblab boradi.
+      const comparison = await getComparison(row, { forceUnlock, cachedOnly: true });
       if (comparison.locked) {
         entries.push({ date: row.date, locked: true, unlock_at: comparison.unlock_at });
+      } else if (comparison.notComputed) {
+        entries.push({ date: row.date, locked: false, notComputed: true });
       } else {
         const totalRow = comparison.rows.find((r) => r.level === 'total');
         entries.push({

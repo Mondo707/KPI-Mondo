@@ -41,7 +41,7 @@ async function getComparison(entry, options = {}) {
   if (entry.poster_snapshot) {
     posterValues = JSON.parse(entry.poster_snapshot);
   } else {
-    const leftoverMap = await getStorageLeftovers(entry.spot_id);
+    const leftoverMap = await getStorageLeftovers(entry.spot_id, entry.date);
     posterValues = {};
     ingredients.forEach((ing) => {
       posterValues[ing.id] = leftoverMap.get(String(ing.poster_ingredient_id)) ?? null;

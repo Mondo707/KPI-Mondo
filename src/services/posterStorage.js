@@ -12,12 +12,11 @@
 
 const poster = require('./posterClient');
 
-function todayYmd() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}${m}${day}`;
+// 'YYYY-MM-DD' -> 'YYYYMMDD' (Poster storage.getReportMovement formati)
+function toYmd(dateStr) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr || ''));
+  if (!m) throw new Error(`Noto'g'ri sana: ${dateStr}`);
+  return `${m[1]}${m[2]}${m[3]}`;
 }
 
 /**
@@ -36,14 +35,20 @@ async function getAllIngredients() {
 }
 
 /**
- * Berilgan filial (storage_id = spot_id) uchun barcha ingredientlarning JORIY
- * (bugungi kun oxiridagi) qoldig'ini oladi. Natija: { ingredient_id: qoldiq_son }
+ * Berilgan filial (storage_id = spot_id) uchun barcha ingredientlarning BERILGAN KUN
+ * OXIRIDAGI qoldig'ini oladi. Natija: { ingredient_id: qoldiq_son }
+ *
+ * MUHIM: sana xodim ma'lumot kiritgan kunning sanasi (dateStr) - solishtirish qachon
+ * hisoblanishidan qat'i nazar. Aks holda qoldiq o'lchangandan KEYINGI savdolarni ham
+ * o'z ichiga olib, noto'g'ri farq ko'rsatgan bo'lardi. Poster hisoboti kun darajasida
+ * (24:00 holatiga), shuning uchun tun yarimdan keyin yopiladigan filiallarda kichik
+ * farq bo'lishi mumkin.
  */
-async function getStorageLeftovers(spotId) {
-  const today = todayYmd();
+async function getStorageLeftovers(spotId, dateStr) {
+  const day = toYmd(dateStr);
   const result = await poster.call('storage.getReportMovement', {
-    dateFrom: today,
-    dateTo: today,
+    dateFrom: day,
+    dateTo: day,
     storage_id: spotId,
     type: 1, // 1 = ingredientlar (2=tovarlar, 3=modifikatsiyalar, 4=tех.karta, 5=yarim tayyor)
   });

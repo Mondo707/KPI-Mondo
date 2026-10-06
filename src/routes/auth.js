@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../db/db');
-const { JWT_SECRET } = require('../middleware/auth');
+const { JWT_SECRET, authRequired } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -25,10 +25,12 @@ router.post('/login', async (req, res) => {
     }
 
     await pool.query('UPDATE users SET last_login_at = now() WHERE id = $1', [user.id]);
-    await pool.query(
-      'INSERT INTO login_history (user_id, login, role, logged_in_at) VALUES ($1, $2, $3, now())',
+    const sessionRes = await pool.query(
+      `INSERT INTO login_history (user_id, login, role, logged_in_at, last_seen_at, last_state)
+       VALUES ($1, $2, $3, now(), now(), 'visible') RETURNING id`,
       [user.id, user.login, user.role]
     );
+    const sessionId = sessionRes.rows[0].id;
 
     const allowedSpots = JSON.parse(user.allowed_spots || '[]');
     const allowedSections = JSON.parse(user.allowed_sections || '["kpi","daily_sales","bonus_table","cash","savdo","login_history","portsiya"]');
@@ -40,8 +42,52 @@ router.post('/login', async (req, res) => {
 
     res.json({
       token,
+      session_id: sessionId,
       user: { id: user.id, login: user.login, role: user.role, allowed_spots: allowedSpots, allowed_sections: allowedSections },
     });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/auth/heartbeat - sahifa ochiq turganda brauzer har 2 daqiqada yuboradi.
+// body: { session_id, visible_seconds, hidden_seconds, state }
+//   visible_seconds / hidden_seconds - oxirgi signaldan beri sahifa ekranda ko'rinib /
+//   fonda turgan soniyalar (brauzer o'lchaydi). Server ularni cheklab (clamp) qo'shadi,
+//   shuning uchun noto'g'ri/katta qiymat jadvalni buza olmaydi.
+router.post('/heartbeat', authRequired, async (req, res) => {
+  try {
+    const { session_id, state } = req.body || {};
+    const sessionId = Number(session_id);
+    if (!Number.isInteger(sessionId) || sessionId <= 0) {
+      return res.status(400).json({ error: 'session_id kerak' });
+    }
+
+    const own = await pool.query('SELECT user_id FROM login_history WHERE id = $1', [sessionId]);
+    if (!own.rows.length || own.rows[0].user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Bu sessiya sizga tegishli emas' });
+    }
+
+    const clamp = (v) => Math.max(0, Math.min(300, Math.round(Number(v) || 0)));
+    let visible = clamp(req.body.visible_seconds);
+    let hidden = clamp(req.body.hidden_seconds);
+    // Bir signal oralig'ida 5 daqiqadan ortiq vaqt hisoblanmaydi
+    if (visible + hidden > 300) {
+      const k = 300 / (visible + hidden);
+      visible = Math.floor(visible * k);
+      hidden = Math.floor(hidden * k);
+    }
+
+    await pool.query(
+      `UPDATE login_history
+       SET last_seen_at = now(),
+           visible_seconds = visible_seconds + $1,
+           hidden_seconds = hidden_seconds + $2,
+           last_state = $3
+       WHERE id = $4`,
+      [visible, hidden, state === 'hidden' ? 'hidden' : 'visible', sessionId]
+    );
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

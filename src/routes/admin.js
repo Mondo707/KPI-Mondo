@@ -9,7 +9,7 @@ const { getMappingDetailed, setMapping, discoverPaymentMethods, KNOWN_CHANNELS }
 const { getSettingNumber, setSetting } = require('../services/appSettings');
 const { getAllProductsWithStatus, setOverride, removeOverride } = require('../services/productCategoryOverride');
 const { getProductById } = require('../services/bonusCalculator');
-const { getComparison } = require('../services/cashReconcile');
+const { getComparison, reapplyCashDiffLimit } = require('../services/cashReconcile');
 const { getAllIngredients } = require('../services/posterStorage');
 
 const router = express.Router();
@@ -146,11 +146,14 @@ router.put('/cash-entries/:id', async (req, res) => {
     `UPDATE cash_entries SET
        expenses = $1, banknotes = $2, payment_types = $3,
        toza = $4, total_expense = $5, total_paytypes = $6, total_amount = $7,
-       entered_amount = $7, poster_synced_at = NULL, poster_snapshot = NULL
+       entered_amount = $7, poster_synced_at = NULL, poster_snapshot = NULL,
+       check_ok = NULL, check_diff_percent = NULL, checked_at = NULL
      WHERE id = $8`,
     [JSON.stringify(expenses), JSON.stringify(banknotes), JSON.stringify(paymentTypes),
      toza, totalExpense, totalPaytypes, totalAmount, id]
   );
+  // Yozuv o'zgargani uchun eski natija (bonus belgisi) yaroqsiz - yangi solishtirishgacha neytral holat
+  await pool.query('UPDATE daily_bonus SET cash_diff_ok = 1 WHERE date = $1 AND spot_id = $2', [row.date, row.spot_id]);
   res.json({ ok: true });
 });
 
@@ -373,6 +376,8 @@ router.put('/cash-diff-limit', async (req, res) => {
     return res.status(400).json({ error: 'cash_diff_limit_percent (0 yoki musbat son) kerak' });
   }
   await setSetting('cash_diff_limit_percent', Number(cash_diff_limit_percent));
+  // Eski va yangi kunlar bir xil chegara bilan baholansin (Poster'ga so'rovsiz, saqlangan foiz bo'yicha)
+  await reapplyCashDiffLimit(Number(cash_diff_limit_percent));
   res.json({ ok: true });
 });
 
@@ -424,7 +429,7 @@ router.post('/cash-entries/:id/recompute', async (req, res) => {
     const existing = await pool.query('SELECT * FROM cash_entries WHERE id = $1', [id]);
     if (!existing.rows.length) return res.status(404).json({ error: 'Yozuv topilmadi' });
 
-    await pool.query('UPDATE cash_entries SET poster_snapshot = NULL, poster_synced_at = NULL WHERE id = $1', [id]);
+    await pool.query('UPDATE cash_entries SET poster_snapshot = NULL, poster_synced_at = NULL, check_ok = NULL, check_diff_percent = NULL, checked_at = NULL WHERE id = $1', [id]);
 
     const refreshed = await pool.query('SELECT * FROM cash_entries WHERE id = $1', [id]);
     const comparison = await getComparison(refreshed.rows[0], { forceUnlock: true });

@@ -5,6 +5,7 @@ const cron = require('node-cron');
 const { pool } = require('../db/db');
 const poster = require('./posterClient');
 const { calculateDailyBonus } = require('./bonusCalculator');
+const { computePendingComparisons } = require('./cashReconcile');
 const { getBusinessDayWindow, getCurrentBusinessDate } = require('./businessDay');
 
 const TIMEZONE_OFFSET_HOURS = Number(process.env.TIMEZONE_OFFSET_HOURS || 5);
@@ -61,11 +62,22 @@ async function fetchTransactionsForBusinessDay(dateStr) {
 }
 
 async function upsertDailyBonus(date, spotId, breakdown) {
-  const existingRes = await pool.query(
-    'SELECT cash_diff_ok FROM daily_bonus WHERE date = $1 AND spot_id = $2 LIMIT 1',
+  // Kassa belgisi (cash_diff_ok): avval kassa yozuvidagi solishtirish natijasi (yagona manba),
+  // bo'lmasa mavjud belgi, u ham bo'lmasa 1.
+  const checkRes = await pool.query(
+    'SELECT check_ok FROM cash_entries WHERE date = $1 AND spot_id = $2',
     [date, spotId]
   );
-  const cashDiffOk = existingRes.rows[0] ? existingRes.rows[0].cash_diff_ok : 1;
+  let cashDiffOk;
+  if (checkRes.rows[0] && checkRes.rows[0].check_ok !== null) {
+    cashDiffOk = checkRes.rows[0].check_ok;
+  } else {
+    const existingRes = await pool.query(
+      'SELECT cash_diff_ok FROM daily_bonus WHERE date = $1 AND spot_id = $2 LIMIT 1',
+      [date, spotId]
+    );
+    cashDiffOk = existingRes.rows[0] ? existingRes.rows[0].cash_diff_ok : 1;
+  }
 
   for (const item of breakdown) {
     await pool.query(
@@ -78,6 +90,13 @@ async function upsertDailyBonus(date, spotId, breakdown) {
       [date, spotId, item.category, item.quantity, item.bonus, cashDiffOk]
     );
   }
+
+  // Poster'da chek bekor qilingan/o'zgargan bo'lsa, shu kategoriyada endi savdo qolmagan
+  // bo'lishi mumkin - eski qator bazada qolib ketmasin (aks holda KPI'da mavjud bo'lmagan savdo ko'rinadi).
+  await pool.query(
+    'DELETE FROM daily_bonus WHERE date = $1 AND spot_id = $2 AND NOT (category = ANY($3::text[]))',
+    [date, spotId, breakdown.map((item) => item.category)]
+  );
 }
 
 /**
@@ -96,6 +115,16 @@ async function syncDate(date) {
   for (const [spotId, txs] of bySpot.entries()) {
     const { breakdown } = await calculateDailyBonus(txs, { spotId });
     await upsertDailyBonus(date, spotId, breakdown);
+  }
+
+  // Shu kuni savdosi butunlay yo'qolgan filiallar (barcha cheklar bekor qilingan): faqat
+  // Poster boshqa filiallar uchun ma'lumot qaytargan bo'lsa o'chiramiz - bo'sh javob
+  // (vaqtinchalik uzilish bo'lishi mumkin) bonus ma'lumotini o'chirib yubormasligi uchun.
+  if (allTx.length > 0) {
+    await pool.query(
+      'DELETE FROM daily_bonus WHERE date = $1 AND NOT (spot_id = ANY($2::int[]))',
+      [date, [...bySpot.keys()].map(Number)]
+    );
   }
 
   console.log(`[scheduler] ${date} (ish kuni) uchun ${bySpot.size} ta filial yangilandi (${allTx.length} tranzaksiya)`);
@@ -122,6 +151,17 @@ async function runSync() {
     await syncDate(businessDate);
   } catch (e) {
     console.error('[scheduler] Xato:', e.message);
+  }
+
+  // 6 soatlik qulfi o'tgan kassa yozuvlarini avtomatik Poster bilan solishtiramiz
+  // (bonus "berildi/berilmadi" holati hech kim sahifani ochishini kutmasligi uchun).
+  try {
+    const stats = await computePendingComparisons(6);
+    if (stats.cached || stats.fetched || stats.errors) {
+      console.log(`[cash-check] keshdan: ${stats.cached}, Poster'dan: ${stats.fetched}, xato: ${stats.errors}`);
+    }
+  } catch (e) {
+    console.error('[cash-check] Xato:', e.message);
   } finally {
     isSyncing = false;
   }
