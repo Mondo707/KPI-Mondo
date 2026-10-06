@@ -12,6 +12,16 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('localhost')
     ? false
     : { rejectUnauthorized: false },
+  // Neon "uxlab" turgan bazani uyg'otish bir necha soniya olishi mumkin - cheksiz kutmaymiz
+  connectionTimeoutMillis: 20000,
+});
+
+// MUHIM: bo'sh turgan ulanish bazadan uzilsa (Neon qayta ishga tushganda/yangilanganda,
+// tarmoq uzilishida) pg "error" hodisasi chiqaradi. Unga tinglovchi bo'lmasa, Node butun
+// serverni to'xtatib qo'yadi. Biz uni faqat yozib qo'yamiz - pool uzilgan ulanishni o'zi
+// chiqarib tashlab, keyingi so'rovda yangisini ochadi.
+pool.on('error', (err) => {
+  console.error('[db] Bo\'sh ulanishda xato (server ishlashda davom etadi):', err.message);
 });
 
 async function init() {

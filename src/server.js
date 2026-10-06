@@ -1,6 +1,8 @@
 require('dotenv').config();
 const express = require('express');
+require('./asyncErrors'); // async so'rovlardagi xatolar serverni yiqitmasdan, 500 javobiga aylanadi
 const cors = require('cors');
+const fs = require('fs');
 
 const path = require('path');
 const { ready: dbReady } = require('./db/db');
@@ -18,9 +20,47 @@ const { startScheduler } = require('./services/scheduler');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Render (va boshqa hostinglar) proksi orqasida ishlaydi - foydalanuvchining haqiqiy IP manzilini
+// (login'ga urinishlarni cheklash uchun) shu sozlama orqali olamiz.
+app.set('trust proxy', 1);
+
+// Kutilmagan "unhandled rejection" butun serverni to'xtatmasin - yozib qo'yamiz.
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] Ushlanmagan xato (server ishlashda davom etadi):', reason && reason.message ? reason.message : reason);
+});
+
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// ---- Ilova fayllari versiyasi ----
+// HTML sahifalardagi barcha /js/*.js va /css/*.css havolalariga deploy versiyasi qo'shiladi
+// (masalan /js/api.js?v=ab12cd34). Har deploy'da versiya o'zgaradi, shuning uchun telefondagi
+// eski ilova ham yangi faylni tarmoqdan olishga majbur - "eski fayl + yangi sahifa" xatosi bo'lmaydi.
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const APP_VERSION = (process.env.RENDER_GIT_COMMIT || '').slice(0, 8) || Date.now().toString(36);
+const htmlCache = new Map(); // fayl yo'li -> { mtimeMs, html }
+
+function versionAssetUrls(html) {
+  return html.replace(/(src|href)="(\/(?:js|css)\/[^"?]+\.(?:js|css))"/g, `$1="$2?v=${APP_VERSION}"`);
+}
+
+app.get(/\.html$/, (req, res, next) => {
+  const filePath = path.normalize(path.join(PUBLIC_DIR, req.path));
+  if (!filePath.startsWith(PUBLIC_DIR + path.sep)) return next();
+  fs.stat(filePath, (err, st) => {
+    if (err || !st.isFile()) return next();
+    let cached = htmlCache.get(filePath);
+    if (!cached || cached.mtimeMs !== st.mtimeMs) {
+      cached = { mtimeMs: st.mtimeMs, html: versionAssetUrls(fs.readFileSync(filePath, 'utf8')) };
+      htmlCache.set(filePath, cached);
+    }
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'no-cache');
+    res.send(cached.html);
+  });
+});
+
+app.use(express.static(PUBLIC_DIR));
 
 app.get('/', (req, res) => res.redirect('/login.html'));
 
@@ -35,8 +75,9 @@ app.use('/api/login-history', loginHistoryRoutes);
 app.use('/api/portion', portionRoutes);
 
 app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: 'Server xatosi' });
+  console.error('[server] So\'rovda xato:', req.method, req.originalUrl, '-', err && err.message ? err.message : err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: 'Server vaqtincha javob bera olmadi. Bir necha soniyadan keyin qayta urinib ko\'ring.' });
 });
 
 async function start() {

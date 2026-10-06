@@ -4,21 +4,41 @@ const jwt = require('jsonwebtoken');
 const { pool } = require('../db/db');
 const { JWT_SECRET, authRequired } = require('../middleware/auth');
 
+const { defaultLimiter: limiter } = require('../services/loginLimiter');
+
 const router = express.Router();
+
+// Foydalanuvchi topilmasa ham bcrypt ishlatiladi (javob vaqti loginning mavjudligini bildirmasligi uchun)
+const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing', 10);
 
 router.post('/login', async (req, res) => {
   const { login, password } = req.body || {};
-  if (!login || !password) {
+  if (!login || !password || typeof login !== 'string' || typeof password !== 'string') {
     return res.status(400).json({ error: 'login va password kerak' });
+  }
+
+  const ip = req.ip || 'noma\'lum';
+  const waitSec = limiter.retryAfterSeconds(login, ip);
+  if (waitSec > 0) {
+    const waitMin = Math.ceil(waitSec / 60);
+    res.set('Retry-After', String(waitSec));
+    return res.status(429).json({
+      error: `Juda ko'p noto'g'ri urinish. ${waitMin} daqiqadan keyin qayta urinib ko'ring.`,
+      retry_after_seconds: waitSec,
+    });
   }
 
   try {
     const result = await pool.query('SELECT * FROM users WHERE login = $1', [login]);
     const user = result.rows[0];
-    if (!user) return res.status(401).json({ error: 'Login yoki parol xato' });
 
-    const ok = bcrypt.compareSync(password, user.password_hash);
-    if (!ok) return res.status(401).json({ error: 'Login yoki parol xato' });
+    // bcrypt'ning asinxron varianti: tekshiruv paytida server boshqa so'rovlarni to'xtatib turmaydi
+    const ok = await bcrypt.compare(password, user ? user.password_hash : DUMMY_HASH);
+    if (!user || !ok) {
+      limiter.fail(login, ip);
+      return res.status(401).json({ error: 'Login yoki parol xato' });
+    }
+    limiter.success(login, ip);
 
     if (!user.is_active) {
       return res.status(403).json({ error: 'Bu foydalanuvchi faolsizlantirilgan. Administratorga murojaat qiling.' });

@@ -2,6 +2,9 @@ const express = require('express');
 const XLSX = require('xlsx');
 const { pool } = require('../db/db');
 const { authRequired, requireSection } = require('../middleware/auth');
+const { ensureSpotAccess } = require('../middleware/spotAccess');
+const { validateEntryDate, validateCashPayload, STAFF_MAX_DAYS_BACK } = require('../services/cashValidation');
+const { getCurrentBusinessDate } = require('../services/businessDay');
 const { getComparison, getBranchDiffReport } = require('../services/cashReconcile');
 const { getShiftStatus } = require('../services/posterShiftStatus');
 const poster = require('../services/posterClient');
@@ -20,13 +23,28 @@ function computeTotals(expenses, banknotes, paymentTypes) {
   return { totalExpense, toza, totalPaytypes, totalAmount };
 }
 
+// GET /api/cash/config - sana tanlash oynasi (oddiy xodim uchun nechta kun orqaga) va serverdagi "bugungi" ish kuni
+router.get('/config', authRequired, requireSection('cash'), (req, res) => {
+  res.json({ staff_max_days_back: STAFF_MAX_DAYS_BACK, today: getCurrentBusinessDate() });
+});
+
 // POST /api/cash/entry - xodim kunlik kassa ma'lumotlarini kiritadi
 // body: { date, spot_id, expenses: [{name,amount}], banknotes: {"1000":5,...}, payment_types: {"UZCARD":100000,...} }
 router.post('/entry', authRequired, requireSection('cash'), async (req, res) => {
-  const { date, spot_id, expenses = [], banknotes = {}, payment_types = {} } = req.body || {};
+  const { date, spot_id } = req.body || {};
   if (!date || !spot_id) {
     return res.status(400).json({ error: 'date, spot_id kerak' });
   }
+  if (!Number.isInteger(Number(spot_id)) || Number(spot_id) <= 0) {
+    return res.status(400).json({ error: "spot_id noto'g'ri" });
+  }
+  // Faqat o'z filialiga kiritish mumkin (boshqa filial uchun API orqali ham kiritib bo'lmaydi)
+  if (!ensureSpotAccess(req, res, spot_id)) return;
+  const dateError = validateEntryDate(date, req.user);
+  if (dateError) return res.status(400).json({ error: dateError });
+  const checked = validateCashPayload(req.body);
+  if (checked.error) return res.status(400).json({ error: checked.error });
+  const { expenses, banknotes, payment_types } = checked.value;
 
   try {
     // Agar bu kun uchun yozuv allaqachon bo'lsa - faqat admin tahrirlashi mumkin
@@ -93,6 +111,7 @@ router.post('/entry', authRequired, requireSection('cash'), async (req, res) => 
 router.get('/entry', authRequired, requireSection('cash'), async (req, res) => {
   const { date, spot_id } = req.query;
   if (!date || !spot_id) return res.status(400).json({ error: 'date va spot_id kerak' });
+  if (!ensureSpotAccess(req, res, spot_id)) return;
 
   const result = await pool.query('SELECT * FROM cash_entries WHERE date = $1 AND spot_id = $2', [
     date, Number(spot_id),
@@ -116,6 +135,7 @@ router.get('/entry', authRequired, requireSection('cash'), async (req, res) => {
 router.get('/compare', authRequired, requireSection('cash'), async (req, res) => {
   const { date, spot_id } = req.query;
   if (!date || !spot_id) return res.status(400).json({ error: 'date va spot_id kerak' });
+  if (!ensureSpotAccess(req, res, spot_id)) return;
 
   const result = await pool.query('SELECT * FROM cash_entries WHERE date = $1 AND spot_id = $2', [
     date, Number(spot_id),

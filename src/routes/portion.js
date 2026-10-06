@@ -4,6 +4,8 @@
 const express = require('express');
 const { pool } = require('../db/db');
 const { authRequired, requireSection } = require('../middleware/auth');
+const { ensureSpotAccess } = require('../middleware/spotAccess');
+const { validateEntryDate } = require('../services/cashValidation');
 const { getTrackedIngredients, getComparison, getBranchReport } = require('../services/portionService');
 
 const router = express.Router();
@@ -24,9 +26,21 @@ router.post('/entry', async (req, res) => {
     return res.status(400).json({ error: 'date, spot_id, values kerak' });
   }
 
-  const allowedSpots = req.user.allowed_spots || [];
-  if (allowedSpots.length > 0 && !allowedSpots.includes(Number(spot_id))) {
-    return res.status(403).json({ error: 'Bu filialga ruxsatingiz yo\'q' });
+  if (!ensureSpotAccess(req, res, spot_id)) return;
+  if (!Number.isInteger(Number(spot_id)) || Number(spot_id) <= 0) {
+    return res.status(400).json({ error: "spot_id noto'g'ri" });
+  }
+  // Portsiya: sana to'g'ri formatda va kelajakda emas bo'lishi kerak (3 kunlik oyna faqat kassa uchun)
+  const dateError = validateEntryDate(date, req.user, { enforceWindow: false });
+  if (dateError) return res.status(400).json({ error: dateError });
+  if (typeof values !== 'object' || Array.isArray(values)) {
+    return res.status(400).json({ error: "values noto'g'ri" });
+  }
+  for (const [ingredientId, v] of Object.entries(values)) {
+    const num = Number(v);
+    if (!/^\d+$/.test(ingredientId) || !Number.isFinite(num) || num < 0 || num > 100000) {
+      return res.status(400).json({ error: "Qoldiq manfiy bo'lmagan son bo'lishi kerak (kg)" });
+    }
   }
 
   const existing = await pool.query('SELECT id FROM portion_entries WHERE date = $1 AND spot_id = $2', [date, Number(spot_id)]);
@@ -53,6 +67,7 @@ router.post('/entry', async (req, res) => {
 router.get('/entry', async (req, res) => {
   const { date, spot_id } = req.query;
   if (!date || !spot_id) return res.status(400).json({ error: 'date, spot_id kerak' });
+  if (!ensureSpotAccess(req, res, spot_id)) return;
 
   const result = await pool.query('SELECT * FROM portion_entries WHERE date = $1 AND spot_id = $2', [date, Number(spot_id)]);
   if (!result.rows.length) return res.json({ entry: null });
@@ -63,6 +78,7 @@ router.get('/entry', async (req, res) => {
 router.get('/compare', async (req, res) => {
   const { date, spot_id } = req.query;
   if (!date || !spot_id) return res.status(400).json({ error: 'date, spot_id kerak' });
+  if (!ensureSpotAccess(req, res, spot_id)) return;
 
   const result = await pool.query('SELECT * FROM portion_entries WHERE date = $1 AND spot_id = $2', [date, Number(spot_id)]);
   if (!result.rows.length) return res.status(404).json({ error: 'Bu kun uchun ma\'lumot kiritilmagan' });

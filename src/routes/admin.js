@@ -10,6 +10,7 @@ const { getSettingNumber, setSetting } = require('../services/appSettings');
 const { getAllProductsWithStatus, setOverride, removeOverride } = require('../services/productCategoryOverride');
 const { getProductById } = require('../services/bonusCalculator');
 const { getComparison, reapplyCashDiffLimit } = require('../services/cashReconcile');
+const { validateCashPayload } = require('../services/cashValidation');
 const { getAllIngredients } = require('../services/posterStorage');
 
 const router = express.Router();
@@ -133,9 +134,15 @@ router.put('/cash-entries/:id', async (req, res) => {
   if (!existing.rows.length) return res.status(404).json({ error: 'Yozuv topilmadi' });
   const row = existing.rows[0];
 
-  const expenses = req.body.expenses !== undefined ? req.body.expenses : JSON.parse(row.expenses || '[]');
-  const banknotes = req.body.banknotes !== undefined ? req.body.banknotes : JSON.parse(row.banknotes || '{}');
-  const paymentTypes = req.body.payment_types !== undefined ? req.body.payment_types : JSON.parse(row.payment_types || '{}');
+  const checked = validateCashPayload({
+    expenses: req.body.expenses !== undefined ? req.body.expenses : JSON.parse(row.expenses || '[]'),
+    banknotes: req.body.banknotes !== undefined ? req.body.banknotes : JSON.parse(row.banknotes || '{}'),
+    payment_types: req.body.payment_types !== undefined ? req.body.payment_types : JSON.parse(row.payment_types || '{}'),
+  });
+  if (checked.error) return res.status(400).json({ error: checked.error });
+  const expenses = checked.value.expenses;
+  const banknotes = checked.value.banknotes;
+  const paymentTypes = checked.value.payment_types;
 
   const totalExpense = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const toza = Object.entries(banknotes).reduce((s, [denom, count]) => s + Number(denom) * (Number(count) || 0), 0);
