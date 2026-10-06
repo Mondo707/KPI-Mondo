@@ -6,7 +6,7 @@
 //    eng yangi versiya ishlaydi (eskirgan kod yangi API bilan aralashib, noto'g'ri
 //    ma'lumot ko'rsatmasligi uchun). Kesh faqat internet YO'Q paytda zaxira sifatida ishlatiladi.
 
-const CACHE_NAME = 'kpi-bonus-v7';
+const CACHE_NAME = 'kpi-bonus-v8';
 const PRECACHE = [
   '/css/style.css',
   '/js/api.js',

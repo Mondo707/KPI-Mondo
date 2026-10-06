@@ -7,11 +7,12 @@
 <script>(function(){var t=localStorage.getItem('kpi_theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#080b14">
-<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png?v=2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="/css/style.css">
 <style>
+  #ingredients-wrap { margin-top: 16px; }
   .ingredient-row {
     display: flex; align-items: center; gap: 14px;
     background: var(--card-hover); border: 1px solid var(--border);
@@ -115,15 +116,19 @@
     let selectedReportSpots = [];
 
     async function loadSpots() {
-      const data = await apiFetch('/spots');
       const select = document.getElementById('spot_id');
-      data.spots.forEach((s) => {
-        spotsById[s.spot_id] = s.name;
-        const opt = document.createElement('option');
-        opt.value = s.spot_id;
-        opt.textContent = s.name;
-        select.appendChild(opt);
-      });
+      try {
+        const data = await apiFetch('/spots');
+        data.spots.forEach((s) => {
+          spotsById[s.spot_id] = s.name;
+          const opt = document.createElement('option');
+          opt.value = s.spot_id;
+          opt.textContent = s.name;
+          select.appendChild(opt);
+        });
+      } catch (e) {
+        showToast('Filiallar ro\'yxatini yuklab bo\'lmadi. Sahifani yangilab ko\'ring: ' + e.message, true);
+      }
     }
 
     async function loadIngredients() {

@@ -7,7 +7,7 @@
 <script>(function(){var t=localStorage.getItem('kpi_theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#080b14">
-<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png?v=2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="/css/style.css">
@@ -22,6 +22,7 @@
       <div class="field">
         <label for="entry_date">Sana</label>
         <input type="date" id="entry_date">
+        <div class="hint-inline" id="date-hint" style="display:none; margin-top:4px;"></div>
       </div>
       <button class="btn-primary apply-btn" id="load-btn" style="max-width:160px;">Ma'lumotni yuklash</button>
     </div>
@@ -197,16 +198,20 @@
     }
 
     async function loadSpots() {
-      const data = await apiFetch('/spots');
       const select = document.getElementById('spot_id');
       select.innerHTML = '';
-      data.spots.forEach((s) => {
-        spotsById[s.spot_id] = s.name;
-        const opt = document.createElement('option');
-        opt.value = s.spot_id;
-        opt.textContent = s.name;
-        select.appendChild(opt);
-      });
+      try {
+        const data = await apiFetch('/spots');
+        data.spots.forEach((s) => {
+          spotsById[s.spot_id] = s.name;
+          const opt = document.createElement('option');
+          opt.value = s.spot_id;
+          opt.textContent = s.name;
+          select.appendChild(opt);
+        });
+      } catch (e) {
+        showToast('Filiallar ro\'yxatini yuklab bo\'lmadi. Sahifani yangilab ko\'ring: ' + e.message, true);
+      }
     }
 
     function buildBanknoteGrid() {
@@ -216,7 +221,7 @@
         const row = document.createElement('div');
         row.className = 'bn-row';
         row.innerHTML = `<span class="bn-label">${v.toLocaleString('ru-RU')} so'mlik</span>
-          <input type="number" class="bn-count" data-value="${v}" value="0" min="0">
+          <input type="number" class="bn-count" data-value="${v}" value="0" min="0" step="1">
           <span class="bn-sum" data-sum-for="${v}">0</span>`;
         grid.appendChild(row);
       });
@@ -296,7 +301,7 @@
 
       const banknotes = {};
       document.querySelectorAll('.bn-count').forEach((i) => {
-        banknotes[i.dataset.value] = Number(i.value) || 0;
+        banknotes[i.dataset.value] = Math.max(0, Math.round(Number(i.value) || 0));
       });
 
       const payment_types = {};
@@ -796,6 +801,18 @@
       const user = getUser();
       if (!user || user.role !== 'admin') {
         document.getElementById('export-btn').style.display = 'none';
+
+        // Oddiy xodim faqat bugundan boshlab oxirgi bir necha kun uchun kirita oladi (server ham tekshiradi)
+        try {
+          const cfg = await apiFetch('/cash/config');
+          const [y, m, d] = cfg.today.split('-').map(Number);
+          const dateEl = document.getElementById('entry_date');
+          dateEl.max = cfg.today;
+          dateEl.min = new Date(Date.UTC(y, m - 1, d - cfg.staff_max_days_back)).toISOString().slice(0, 10);
+          const hint = document.getElementById('date-hint');
+          hint.textContent = `Faqat oxirgi ${cfg.staff_max_days_back} kun uchun kiritish mumkin`;
+          hint.style.display = 'block';
+        } catch (e) { /* sozlama olinmasa ham server baribir tekshiradi */ }
       }
 
       if (!isWebUSBSupported()) {
