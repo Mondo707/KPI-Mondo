@@ -50,6 +50,7 @@ function renderTopbar(activePage) {
       <button class="theme-toggle-full" id="theme-toggle-btn-desktop">
         <span id="theme-label-desktop">${isDark ? '🌙 Tungi rejim' : '☀️ Yorug\' rejim'}</span>
       </button>
+      ${langToggleHtml('lang-toggle-btn-desktop')}
       <button class="btn-secondary" id="logout-btn-desktop" style="width:100%; margin-top:8px;">Chiqish</button>
     </div>
   `;
@@ -80,6 +81,7 @@ function renderTopbar(activePage) {
       <button class="theme-toggle-full" id="theme-toggle-btn-mobile" style="margin-bottom:8px;">
         <span id="theme-label-mobile">${isDark ? '🌙 Tungi rejim' : '☀️ Yorug\' rejim'}</span>
       </button>
+      ${langToggleHtml('lang-toggle-btn-mobile')}
       <a href="#" id="logout-btn-mobile" style="color:var(--danger);"><span class="nav-ic">↩</span> Chiqish</a>
     </div>
   `;
@@ -100,6 +102,10 @@ function renderTopbar(activePage) {
   // ===== Umumiy: chiqish va mavzu almashtirish (ikkala joyda ham) =====
   document.getElementById('logout-btn-desktop').addEventListener('click', logout);
   document.getElementById('logout-btn-mobile').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+  bindLangButton('lang-toggle-btn-desktop');
+  bindLangButton('lang-toggle-btn-mobile');
+  i18nRefresh();
 
   function applyTheme(next) {
     document.documentElement.setAttribute('data-theme', next);

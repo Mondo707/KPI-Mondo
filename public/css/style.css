@@ -216,6 +216,16 @@ body.has-sidebar { margin: 0; }
 @media (min-width: 861px) {
   body.has-sidebar { padding-left: 240px; }
 }
+/* O'rta kenglik (masalan telefonda "Kompyuter versiyasi" rejimi): yon panel ixcham,
+   kontent uchun ko'proq joy qoladi */
+@media (min-width: 861px) and (max-width: 1100px) {
+  body.has-sidebar { padding-left: 188px; }
+  .sidebar { width: 188px; padding: 16px 10px; }
+  .sidebar nav a { font-size: 13.5px; padding: 11px 10px; gap: 9px; }
+  .sidebar nav a.active { padding-left: 7px; }
+  .sidebar .brand { padding: 4px 6px 16px; font-size: 14px; }
+  .container { padding-left: 12px; padding-right: 12px; }
+}
 @media (max-width: 860px) {
   .sidebar { display: none; }
   .mobile-topbar { display: flex; }
@@ -267,7 +277,7 @@ table {
 /* Tor ekranda (mobil) jadval tarkibi sig'masa, jadvalning O'ZI gorizontal
    aylantiriladi (butun sahifa emas) - shunda boshqa ustunlar "yo'qolib"
    qolmaydi, faqat suring kerak bo'ladi. */
-@media (max-width: 760px) {
+@media (max-width: 1100px) {
   table {
     display: block;
     overflow-x: auto;
@@ -873,9 +883,11 @@ td.indent { padding-left: 26px; color: var(--text-dim); }
 
 /* Ko'p tanlovli filtr ("chip" ko'rinishida) - Kunlik savdo, Portsiya, Kassa
    filiallar hisobotida ishlatiladi */
-.multiselect { position: relative; }
+.multiselect { position: relative; min-width: 0; }
+/* Katak o'ziga ajratilgan joyga moslashadi (240px — faqat tavsiya etilgan kenglik) */
+.filters .field.multiselect { flex: 1 1 240px; min-width: 0; max-width: 100%; }
 .ms-box {
-  min-width: 240px;
+  min-width: 0; width: 100%; box-sizing: border-box; max-width: 100%;
   min-height: 40px;
   background: var(--input-bg, var(--card-hover));
   border: 1px solid var(--border);
@@ -917,6 +929,7 @@ td.indent { padding-left: 26px; color: var(--text-dim); }
   top: calc(100% + 4px);
   left: 0;
   width: 280px;
+  max-width: 100%;
   max-height: 280px;
   overflow-y: auto;
   background: var(--card);
@@ -1002,3 +1015,21 @@ td.indent { padding-left: 26px; color: var(--text-dim); }
   table.stack-mobile td:nth-child(4) { grid-area: status; }
   table.stack-mobile td:nth-child(5) { grid-area: reason; font-size: 12px; color: var(--text-dim); }
 }
+
+
+/* ---- Til tugmasi (UZ | RU) ---- */
+.lang-toggle {
+  width: 100%; margin-top: 8px; padding: 6px; border-radius: 10px;
+  background: var(--card-hover); border: 1px solid var(--border); color: var(--text);
+  font-size: 13px; cursor: pointer; display: flex; align-items: center;
+  justify-content: center; gap: 6px; font-family: inherit;
+}
+.lang-toggle .lang-globe { font-size: 15px; margin-right: 2px; }
+.lang-toggle .lang-opt {
+  padding: 4px 12px; border-radius: 7px; font-weight: 700; letter-spacing: .4px;
+  color: var(--text-dim);
+}
+.lang-toggle .lang-opt.active { background: var(--accent); color: #1a1a1a; }
+.mobile-menu .lang-toggle { margin-bottom: 8px; }
+.lang-floating { position: fixed; top: 12px; right: 12px; z-index: 400; }
+.lang-floating .lang-toggle { width: auto; margin: 0; padding: 5px 8px; }
