@@ -136,6 +136,34 @@ async function syncDate(date) {
  */
 let isSyncing = false;
 
+// Har ertalab (har yangi ish kunining birinchi sinxronlashida) kecha va undan oldingi kun
+// Poster'dan qayta olinadi: kech kiritilgan tuzatishlar, kech yopilgan cheklar va
+// kechasi o'zgargan ma'lumotlar bonus/savdoga to'g'ri tushishi uchun.
+const CATCH_UP_DAYS = 2;
+let lastCatchUpFor = null;
+
+function shiftDate(dateStr, days) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return dt.toISOString().slice(0, 10);
+}
+
+async function catchUpPastDays(businessDate) {
+  if (lastCatchUpFor === businessDate) return;
+  let allOk = true;
+  for (let i = 1; i <= CATCH_UP_DAYS; i++) {
+    const d = shiftDate(businessDate, -i);
+    try {
+      await syncDate(d);
+    } catch (e) {
+      allOk = false;
+      console.error(`[scheduler] ${d} ni qayta sinxronlashda xato:`, e.message);
+    }
+  }
+  // Muvaffaqiyatli bo'lsa shu kunga qayta urinilmaydi; xato bo'lsa keyingi tsiklda yana urinadi
+  if (allOk) lastCatchUpFor = businessDate;
+}
+
 async function runSync() {
   if (!isWithinActiveWindow()) {
     // Tinch soat (03:30-06:00) - hech qanday so'rov yubormaymiz, baza uxlashi mumkin
@@ -149,6 +177,7 @@ async function runSync() {
   const businessDate = getCurrentBusinessDate();
   try {
     await syncDate(businessDate);
+    await catchUpPastDays(businessDate);
   } catch (e) {
     console.error('[scheduler] Xato:', e.message);
   }
@@ -174,4 +203,4 @@ function startScheduler() {
   console.log(`[scheduler] Har ${intervalMinutes} daqiqada avtomatik yangilanish yoqildi (ish kuni: 05:00-05:00, faol soat: 06:00-03:30).`);
 }
 
-module.exports = { startScheduler, syncDate };
+module.exports = { startScheduler, syncDate, shiftDate };
