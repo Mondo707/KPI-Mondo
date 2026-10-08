@@ -264,6 +264,55 @@
     </div>
 
     <div class="section">
+      <h2>Telegram avto-hisobotlar</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">Hisobot har kuni belgilangan vaqtda tanlangan foydalanuvchilarga (ularning shaxsiy chatiga) va Telegram guruhlarga PDF bo'lib boradi. Foydalanuvchi o'z filiallari va huquqlari doirasida oladi. Guruhga faqat shu yerda belgilangan hisobotlar boradi. Vaqt Toshkent vaqti bilan, ish kuni 05:00 da boshlanadi, shuning uchun "Kecha" hisoboti uchun 05:00 dan keyingi vaqtni tanlang.</p>
+      <div id="ar-bot-warn" style="display:none; color:var(--danger, #e5484d); font-size:13px; margin-bottom:10px;">⚠️ TELEGRAM_BOT_TOKEN sozlanmagan, bot o'chirilgan.</div>
+      <div style="margin-bottom:12px;"><button class="btn-primary" id="ar-new-btn" style="width:auto; padding:8px 16px;">+ Yangi avto-hisobot</button></div>
+
+      <div id="ar-form" style="display:none; border:1px solid var(--border, #2a3350); border-radius:12px; padding:14px; margin-bottom:16px;">
+        <input type="hidden" id="ar-id">
+        <div class="form-row">
+          <div class="field" style="flex:2;"><label for="ar-name">Nomi</label><input type="text" id="ar-name" maxlength="80" placeholder="Masalan: Ertalabki kassa farqi"></div>
+          <div class="field"><label for="ar-key">Hisobot</label><select id="ar-key"><option value="k">Kassa farqi (Fakt va Poster)</option></select></div>
+          <div class="field" style="max-width:130px;"><label for="ar-time">Vaqt</label><input type="time" id="ar-time" value="08:00"></div>
+          <div class="field"><label for="ar-period">Davr</label><select id="ar-period"><option value="yesterday">Kecha</option><option value="last7">Oxirgi 7 kun</option><option value="month">Shu oy (bugungacha)</option></select></div>
+          <div class="field" style="max-width:150px;"><label for="ar-lang">Guruh tili</label><select id="ar-lang"><option value="uz">O'zbekcha</option><option value="ru">Русский</option></select></div>
+        </div>
+        <div class="form-row">
+          <div class="field" style="flex:1.4;"><label>Filiallar (hech biri belgilanmasa = hammasi; foydalanuvchi faqat o'z filiallarini oladi)</label><div id="ar-spots" class="spot-checks"></div></div>
+          <div class="field" style="flex:1;"><label>Foydalanuvchilar (shaxsiy chat)</label><div id="ar-users" class="spot-checks"></div></div>
+          <div class="field" style="flex:1;"><label>Guruhlar</label><div id="ar-groups" class="spot-checks"></div></div>
+        </div>
+        <label class="spot-check-item" style="margin:6px 0 12px;"><input type="checkbox" id="ar-enabled" checked> Yoqilgan (har kuni avtomatik yuboriladi)</label>
+        <div style="display:flex; gap:10px;">
+          <button class="btn-primary" id="ar-save-btn" style="width:auto; padding:8px 18px;">Saqlash</button>
+          <button class="btn-secondary" id="ar-cancel-btn" style="width:auto; padding:8px 18px;">Bekor qilish</button>
+        </div>
+      </div>
+
+      <table>
+        <thead><tr><th>Nomi</th><th>Vaqt</th><th>Davr</th><th>Oluvchilar</th><th>Oxirgi yuborilgan</th><th>Holat</th><th>Amallar</th></tr></thead>
+        <tbody id="ar-body"></tbody>
+      </table>
+      <div class="empty-state" id="ar-empty" style="display:none;">Hali avto-hisobot yo'q</div>
+
+      <h3 style="margin:22px 0 6px; font-size:15px;">Ulangan Telegram guruhlar</h3>
+      <p style="color:var(--text-dim); font-size:13px; margin:0 0 8px;">Guruhni ulash: botni guruhga qo'shing, so'ng guruhda Telegram'i bog'langan admin <code>/guruh</code> deb yozsin. Guruh shu ro'yxatda paydo bo'ladi.</p>
+      <table>
+        <thead><tr><th>Guruh</th><th>ID</th><th>Kim ulagan</th><th>Holat</th><th></th></tr></thead>
+        <tbody id="ar-groups-body"></tbody>
+      </table>
+      <div class="empty-state" id="ar-groups-empty" style="display:none;">Hali guruh ulanmagan</div>
+
+      <h3 style="margin:22px 0 6px; font-size:15px;">Yuborish jurnali (oxirgi 60 ta)</h3>
+      <table>
+        <thead><tr><th>Vaqt</th><th>Hisobot</th><th>Kimga</th><th>Natija</th><th>Izoh</th></tr></thead>
+        <tbody id="ar-log-body"></tbody>
+      </table>
+      <div class="empty-state" id="ar-log-empty" style="display:none;">Jurnal bo'sh</div>
+    </div>
+
+    <div class="section">
       <h2>Poster o'zgarishlari jurnali</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">Kassa Poster bilan solishtirilgandan keyin Poster'dagi raqam o'zgarsa (masalan chek o'chirilsa), tizim oxirgi 3 kunni har ertalab tekshirib, kunni avtomatik qayta hisoblaydi va bu yerga yozib qo'yadi. Bu jurnal faqat adminga ko'rinadi.</p>
       <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:12px;">
@@ -1457,6 +1506,142 @@
       }
     });
 
+
+    // ---------- Telegram avto-hisobotlar ----------
+    let arState = { reports: [], groups: [], users: [], log: [] };
+    const arEsc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const AR_PERIOD = { yesterday: 'Kecha', last7: 'Oxirgi 7 kun', month: 'Shu oy' };
+
+    async function loadAutoReports() {
+      try {
+        arState = await apiFetch('/admin/auto-reports');
+        document.getElementById('ar-bot-warn').style.display = arState.bot_enabled ? 'none' : 'block';
+        renderAutoReports();
+      } catch (e) {
+        showToast('Avto-hisobotlarni yuklashda xato: ' + e.message, true);
+      }
+    }
+
+    function fmtLogTime(v) {
+      return v ? new Date(v).toLocaleString('ru-RU') : '—';
+    }
+
+    function renderAutoReports() {
+      const body = document.getElementById('ar-body');
+      body.innerHTML = arState.reports.map((r) => `
+        <tr>
+          <td>${arEsc(r.name)}</td>
+          <td>${arEsc(r.send_time)}</td>
+          <td>${arEsc(AR_PERIOD[r.period] || r.period)}</td>
+          <td>Foydalanuvchilar: ${r.user_ids.length} · Guruhlar: ${r.group_ids.length}</td>
+          <td>${r.last_sent_date ? arEsc(r.last_sent_date) : '<span style="color:var(--text-dim);">Hali yo\'q</span>'}</td>
+          <td>${r.enabled ? '<span class="badge ok">Yoqilgan</span>' : '<span class="badge bad">O\'chiq</span>'}</td>
+          <td>
+            <button class="action-btn" data-ar="edit" data-id="${r.id}">Tahrirlash</button>
+            <button class="action-btn" data-ar="test" data-id="${r.id}">Menga sinab yuborish</button>
+            <button class="action-btn warn" data-ar="send" data-id="${r.id}">Hozir hammaga yuborish</button>
+            <button class="action-btn danger" data-ar="del" data-id="${r.id}">O'chirish</button>
+          </td>
+        </tr>`).join('');
+      document.getElementById('ar-empty').style.display = arState.reports.length ? 'none' : 'block';
+
+      document.getElementById('ar-groups-body').innerHTML = arState.groups.map((g) => `
+        <tr>
+          <td>${arEsc(g.title || '—')}</td><td><code>${g.chat_id}</code></td><td>${arEsc(g.registered_by || '—')}</td>
+          <td>${g.is_active ? '<span class="badge ok">Faol</span>' : '<span class="badge bad">Bot chiqarilgan</span>'}</td>
+          <td><button class="action-btn danger" data-ar="gdel" data-id="${g.chat_id}">Olib tashlash</button></td>
+        </tr>`).join('');
+      document.getElementById('ar-groups-empty').style.display = arState.groups.length ? 'none' : 'block';
+
+      document.getElementById('ar-log-body').innerHTML = arState.log.map((l) => `
+        <tr>
+          <td>${fmtLogTime(l.created_at)}</td>
+          <td>${arEsc(l.report_name)}${l.manual ? ' <span style="color:var(--text-dim);">(qo\'lda)</span>' : ''}</td>
+          <td>${arEsc(l.target_label)}</td>
+          <td>${l.status === 'yuborildi' ? '<span class="badge ok">Yuborildi</span>' : (l.status === 'xato' ? '<span class="badge bad">Xato</span>' : '<span class="badge">O\'tkazildi</span>')}</td>
+          <td style="font-size:12px; color:var(--text-dim);">${arEsc(l.detail || '')}</td>
+        </tr>`).join('');
+      document.getElementById('ar-log-empty').style.display = arState.log.length ? 'none' : 'block';
+    }
+
+    function openArForm(rep) {
+      const r = rep || { id: '', name: '', report_key: 'k', send_time: '08:00', period: 'yesterday', lang: 'uz', spot_ids: [], user_ids: [], group_ids: [], enabled: true };
+      document.getElementById('ar-id').value = r.id;
+      document.getElementById('ar-name').value = r.name;
+      document.getElementById('ar-key').value = r.report_key;
+      document.getElementById('ar-time').value = r.send_time;
+      document.getElementById('ar-period').value = r.period;
+      document.getElementById('ar-lang').value = r.lang;
+      document.getElementById('ar-enabled').checked = r.enabled;
+      document.getElementById('ar-spots').innerHTML = spotsList.map((s) => `
+        <label class="spot-check-item"><input type="checkbox" class="ar-spot" value="${s.spot_id}" ${r.spot_ids.includes(Number(s.spot_id)) ? 'checked' : ''}> ${arEsc(s.name)}</label>`).join('');
+      document.getElementById('ar-users').innerHTML = arState.users.length ? arState.users.map((u) => `
+        <label class="spot-check-item"><input type="checkbox" class="ar-user" value="${u.id}" ${r.user_ids.includes(u.id) ? 'checked' : ''}> ${arEsc(u.login)} (@${arEsc(u.telegram_username)})${u.linked ? '' : ' — /start kutilmoqda'}${u.is_active ? '' : ' — faolsiz'}</label>`).join('')
+        : '<span style="color:var(--text-dim); font-size:13px;">Telegram username biriktirilgan foydalanuvchi yo\'q</span>';
+      document.getElementById('ar-groups').innerHTML = arState.groups.length ? arState.groups.map((g) => `
+        <label class="spot-check-item"><input type="checkbox" class="ar-group" value="${g.chat_id}" ${r.group_ids.includes(g.chat_id) ? 'checked' : ''}> ${arEsc(g.title || g.chat_id)}${g.is_active ? '' : ' — bot chiqarilgan'}</label>`).join('')
+        : '<span style="color:var(--text-dim); font-size:13px;">Ulangan guruh yo\'q</span>';
+      document.getElementById('ar-form').style.display = 'block';
+      document.getElementById('ar-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    document.getElementById('ar-new-btn').addEventListener('click', () => openArForm(null));
+    document.getElementById('ar-cancel-btn').addEventListener('click', () => { document.getElementById('ar-form').style.display = 'none'; });
+
+    document.getElementById('ar-save-btn').addEventListener('click', async () => {
+      const id = document.getElementById('ar-id').value;
+      const pick = (cls) => Array.from(document.querySelectorAll(cls + ':checked')).map((c) => Number(c.value));
+      const payload = {
+        name: document.getElementById('ar-name').value.trim(),
+        report_key: document.getElementById('ar-key').value,
+        send_time: document.getElementById('ar-time').value,
+        period: document.getElementById('ar-period').value,
+        lang: document.getElementById('ar-lang').value,
+        spot_ids: pick('.ar-spot'), user_ids: pick('.ar-user'), group_ids: pick('.ar-group'),
+        enabled: document.getElementById('ar-enabled').checked,
+      };
+      try {
+        await apiFetch(id ? `/admin/auto-reports/${id}` : '/admin/auto-reports', { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
+        showToast('Avto-hisobot saqlandi');
+        document.getElementById('ar-form').style.display = 'none';
+        await loadAutoReports();
+      } catch (e) {
+        showToast('Xato: ' + e.message, true);
+      }
+    });
+
+    document.addEventListener('click', async (ev) => {
+      const btn = ev.target.closest('[data-ar]');
+      if (!btn) return;
+      const act = btn.dataset.ar;
+      const id = btn.dataset.id;
+      try {
+        if (act === 'edit') {
+          openArForm(arState.reports.find((r) => String(r.id) === String(id)));
+        } else if (act === 'del') {
+          if (!confirm('Bu avto-hisobotni o\'chirasizmi?')) return;
+          await apiFetch(`/admin/auto-reports/${id}`, { method: 'DELETE' });
+          showToast('O\'chirildi');
+          await loadAutoReports();
+        } else if (act === 'gdel') {
+          if (!confirm('Bu guruhni ro\'yxatdan olib tashlaysizmi?')) return;
+          await apiFetch(`/admin/bot-groups/${id}`, { method: 'DELETE' });
+          await loadAutoReports();
+        } else if (act === 'test' || act === 'send') {
+          if (act === 'send' && !confirm('Hisobot hozir barcha oluvchilarga (foydalanuvchilar va guruhlarga) yuboriladi. Davom etasizmi?')) return;
+          btn.disabled = true;
+          showToast('Yuborilmoqda...');
+          const r = await apiFetch(`/admin/auto-reports/${id}/send`, { method: 'POST', body: JSON.stringify({ only_me: act === 'test' }) });
+          showToast(`Yuborildi: ${r.ok}, xato: ${r.failed}, o'tkazildi: ${r.skipped}`, r.failed > 0);
+          await loadAutoReports();
+          btn.disabled = false;
+        }
+      } catch (e) {
+        btn.disabled = false;
+        showToast('Xato: ' + e.message, true);
+      }
+    });
+
     (async function init() {
       const today = todayStr();
       const monthAgo = new Date();
@@ -1472,6 +1657,7 @@
       await loadSpotsForForm();
       await loadBonusConfig();
       await loadPosterChanges();
+      await loadAutoReports();
       await loadProducts();
       await loadPortionIngredients();
       await loadPosterIngredientsForSelect();
