@@ -721,4 +721,27 @@ router.delete('/bot-groups/:chat_id', async (req, res) => {
   res.json({ ok: true });
 });
 
+
+// GET /api/admin/boundary-check?date=YYYY-MM-DD&spot_id= - ish kuni chegarasi (05:00) diagnostikasi (faqat o'qish)
+const { runBoundaryCheck } = require('../services/boundaryDiag');
+let boundaryBusy = false;
+let boundaryLast = 0;
+router.get('/boundary-check', async (req, res) => {
+  const { date, spot_id } = req.query;
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Sana YYYY-MM-DD ko\'rinishida bo\'lishi kerak' });
+  if (spot_id && !/^\d+$/.test(spot_id)) return res.status(400).json({ error: 'Filial noto\'g\'ri' });
+  if (boundaryBusy) return res.status(429).json({ error: 'Tekshiruv hozir ishlayapti, biroz kuting' });
+  if (Date.now() - boundaryLast < 10000) return res.status(429).json({ error: 'Iltimos, 10 soniyadan keyin qayta urinib ko\'ring' });
+  boundaryBusy = true;
+  try {
+    const text = await runBoundaryCheck(date || undefined, spot_id || undefined);
+    res.json({ text });
+  } catch (e) {
+    res.status(502).json({ error: 'Poster bilan aloqada xato: ' + e.message });
+  } finally {
+    boundaryBusy = false;
+    boundaryLast = Date.now();
+  }
+});
+
 module.exports = router;
