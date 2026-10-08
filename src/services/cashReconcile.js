@@ -19,7 +19,7 @@
 
 const poster = require('./posterClient');
 const { pool } = require('../db/db');
-const { getBusinessDayWindowEpoch } = require('./businessDay');
+const { getBusinessDayWindowEpoch, getCurrentBusinessDate } = require('./businessDay');
 const { getMapping } = require('./posterPaymentMethods');
 const { getSettingNumber } = require('./appSettings');
 
@@ -107,10 +107,10 @@ async function getShiftDiff(spotId, dateStr) {
 }
 
 /**
- * dash.getTransactions orqali berilgan "ish kuni" uchun barcha tranzaksiyalarni oladi
- * (payment_method_id va client_id bilan birga).
+ * dash.getTransactions orqali berilgan "ish kuni" uchun BARCHA filiallarning tranzaksiyalarini
+ * oladi (Poster bitta so'rovda hamma filialni qaytaradi). Ish kuni oynasiga qarab filtrlanadi.
  */
-async function fetchTransactionsForBusinessDay(dateStr, spotId) {
+async function fetchAllTransactionsForBusinessDay(dateStr) {
   const { startMs, endMs } = getBusinessDayWindowEpoch(dateStr);
 
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -138,10 +138,18 @@ async function fetchTransactionsForBusinessDay(dateStr, spotId) {
   allTx = Array.from(uniqueTxMap.values());
 
   return allTx.filter((tx) => {
-    if (Number(tx.spot_id) !== Number(spotId)) return false;
     const closeMs = Number(tx.date_close);
     return closeMs >= startMs && closeMs < endMs;
   });
+}
+
+/**
+ * dash.getTransactions orqali berilgan "ish kuni" va filial uchun tranzaksiyalarni oladi
+ * (payment_method_id va client_id bilan birga).
+ */
+async function fetchTransactionsForBusinessDay(dateStr, spotId) {
+  const all = await fetchAllTransactionsForBusinessDay(dateStr);
+  return all.filter((tx) => Number(tx.spot_id) === Number(spotId));
 }
 
 function isLocked(entry) {
@@ -454,7 +462,117 @@ async function reapplyCashDiffLimit(limitPercent) {
   );
 }
 
+// ============ Poster ma'lumoti keyin o'zgarganini aniqlash (chek o'chirilsa va h.k.) ============
+
+const CHANNEL_LABELS = {
+  cash: 'Наличные', uzcard: 'UZCARD', humo: 'HUMO', uz_qr: 'Uz Qr Kod', karta_other: 'Карточки',
+  click: 'Click', payme: 'Payme', uzum: 'Uzum', alif: 'Alif', paynet: 'Paynet',
+  yandex_eats: 'Yandex eats', jizbiz: 'Jiz-Biz restaurant',
+};
+const SNAPSHOT_KEYS = Object.keys(CHANNEL_LABELS);
+const RECHECK_TOLERANCE = 0.5; // so'm - yaxlitlash xatosini o'zgarish deb hisoblamaymiz
+
+function snapshotTotal(snap) {
+  return SNAPSHOT_KEYS.reduce((s, k) => s + (Number(snap[k]) || 0), 0);
+}
+
+let isRechecking = false;
+
+/**
+ * Oxirgi `days` ish kuni (bugundan tashqari) uchun Poster'dagi kassa ma'lumotini QAYTA oladi va
+ * keshdagi bilan solishtiradi. Farq topilsa (masalan Poster'da chek o'chirilgan): keshni yangilaydi,
+ * kunni qayta hisoblaydi (kassa farqi, bonus holati) va o'zgarishni jurnalga yozadi.
+ * Poster'ga so'rov: faqat kassa yozuvi bor kunlar uchun, har kunga 2 ta (barcha filial bitta so'rovda).
+ */
+async function recheckRecentDays(days = 3) {
+  if (isRechecking) return { skipped: true, checked: 0, changed: 0, errors: 0, days: [], changedDates: [] };
+  isRechecking = true;
+  const stats = { checked: 0, changed: 0, errors: 0, suspicious: 0, days: [], changedDates: [] };
+  try {
+    const nDays = Math.max(1, Math.min(7, Number(days) || 3));
+    const today = getCurrentBusinessDate();
+    const [ty, tm, td] = today.split('-').map(Number);
+
+    for (let i = 1; i <= nDays; i++) {
+      const dateStr = new Date(Date.UTC(ty, tm - 1, td - i)).toISOString().slice(0, 10);
+      const entriesRes = await pool.query(
+        'SELECT * FROM cash_entries WHERE date = $1 AND poster_snapshot IS NOT NULL',
+        [dateStr]
+      );
+      if (entriesRes.rows.length === 0) continue; // Poster'ga keraksiz so'rov yubormaymiz
+      stats.days.push(dateStr);
+
+      let allTx;
+      try {
+        allTx = await fetchAllTransactionsForBusinessDay(dateStr);
+      } catch (e) {
+        stats.errors += 1;
+        console.error(`[poster-recheck] ${dateStr}: Poster xatosi:`, e.message);
+        continue; // keshdagi eski raqam o'zgarishsiz qoladi
+      }
+
+      for (const entry of entriesRes.rows) {
+        stats.checked += 1;
+        try {
+          const oldSnap = JSON.parse(entry.poster_snapshot);
+          const spotTx = allTx.filter((tx) => Number(tx.spot_id) === Number(entry.spot_id));
+
+          // Poster butunlay bo'sh javob qaytarsa (vaqtinchalik uzilish bo'lishi mumkin), kesh
+          // o'chirilmaydi - aks holda butun kun noto'g'ri "0" bo'lib qolardi
+          if (allTx.length === 0 || (spotTx.length === 0 && snapshotTotal(oldSnap) > 0)) {
+            stats.suspicious += 1;
+            continue;
+          }
+
+          const newSnap = await buildPosterSnapshot(spotTx, entry.spot_id);
+          const changes = [];
+          for (const k of SNAPSHOT_KEYS) {
+            const o = Number(oldSnap[k]) || 0;
+            const n = Number(newSnap[k]) || 0;
+            if (Math.abs(n - o) > RECHECK_TOLERANCE) changes.push({ name: CHANNEL_LABELS[k], old: Math.round(o), new: Math.round(n) });
+          }
+          if (changes.length === 0) continue;
+
+          const updated = { ...newSnap, shift_diff: oldSnap.shift_diff, computed_at: new Date().toISOString() };
+          await pool.query(
+            'UPDATE cash_entries SET poster_snapshot = $1, poster_synced_at = now() WHERE id = $2',
+            [JSON.stringify(updated), entry.id]
+          );
+          await getComparison({ ...entry, poster_snapshot: JSON.stringify(updated) }, { forceUnlock: false });
+          const afterRes = await pool.query('SELECT check_ok FROM cash_entries WHERE id = $1', [entry.id]);
+
+          await pool.query(
+            `INSERT INTO poster_change_log (date, spot_id, old_total, new_total, details, status_before, status_after)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [entry.date, entry.spot_id, snapshotTotal(oldSnap), snapshotTotal(updated), JSON.stringify(changes),
+              entry.check_ok, afterRes.rows[0] ? afterRes.rows[0].check_ok : null]
+          );
+          stats.changed += 1;
+          if (!stats.changedDates.includes(entry.date)) stats.changedDates.push(entry.date);
+          console.log(`[poster-recheck] ${entry.date} filial ${entry.spot_id}: Poster kassa ${Math.round(snapshotTotal(oldSnap))} -> ${Math.round(snapshotTotal(updated))}`);
+        } catch (e) {
+          stats.errors += 1;
+          console.error(`[poster-recheck] ${entry.date} filial ${entry.spot_id}:`, e.message);
+        }
+      }
+    }
+  } finally {
+    isRechecking = false;
+  }
+  return stats;
+}
+
+async function listPosterChanges(limit = 50) {
+  const res = await pool.query(
+    `SELECT id, detected_at, date, spot_id, old_total, new_total, details, status_before, status_after
+     FROM poster_change_log ORDER BY id DESC LIMIT $1`,
+    [limit]
+  );
+  return res.rows.map((r) => ({ ...r, details: r.details ? JSON.parse(r.details) : [] }));
+}
+
 module.exports = {
+  recheckRecentDays, listPosterChanges, fetchAllTransactionsForBusinessDay,
   getComparison, isLocked, unlockTime, RECONCILE_DELAY_HOURS, fetchTransactionsForBusinessDay,
   getBranchDiffReport, computePendingComparisons, reapplyCashDiffLimit,
 };

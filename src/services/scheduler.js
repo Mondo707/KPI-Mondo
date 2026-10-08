@@ -5,7 +5,7 @@ const cron = require('node-cron');
 const { pool } = require('../db/db');
 const poster = require('./posterClient');
 const { calculateDailyBonus } = require('./bonusCalculator');
-const { computePendingComparisons } = require('./cashReconcile');
+const { computePendingComparisons, recheckRecentDays } = require('./cashReconcile');
 const { getBusinessDayWindow, getCurrentBusinessDate } = require('./businessDay');
 
 const TIMEZONE_OFFSET_HOURS = Number(process.env.TIMEZONE_OFFSET_HOURS || 5);
@@ -148,6 +148,22 @@ function shiftDate(dateStr, days) {
   return dt.toISOString().slice(0, 10);
 }
 
+// Oxirgi N kun kassa ma'lumoti Poster'da o'zgargan-o'zgarmaganini (masalan chek o'chirilgan)
+// har yangi ish kunida bir marta tekshiramiz.
+const RECHECK_DAYS = Math.max(1, Math.min(7, Number(process.env.CASH_RECHECK_DAYS || 3)));
+let lastRecheckFor = null;
+
+async function recheckPastCash(businessDate) {
+  if (lastRecheckFor === businessDate) return;
+  const stats = await recheckRecentDays(RECHECK_DAYS);
+  console.log(`[poster-recheck] tekshirildi: ${stats.checked}, o'zgargan: ${stats.changed}, xato: ${stats.errors}, shubhali (bo'sh javob): ${stats.suspicious || 0}`);
+  // Poster'da o'zgargan kunlarning savdo/bonus miqdorlari ham yangilansin
+  for (const d of stats.changedDates || []) {
+    try { await syncDate(d); } catch (e) { console.error(`[poster-recheck] ${d} ni qayta hisoblashda xato:`, e.message); }
+  }
+  if (stats.errors === 0) lastRecheckFor = businessDate;
+}
+
 async function catchUpPastDays(businessDate) {
   if (lastCatchUpFor === businessDate) return;
   let allOk = true;
@@ -180,6 +196,12 @@ async function runSync() {
     await catchUpPastDays(businessDate);
   } catch (e) {
     console.error('[scheduler] Xato:', e.message);
+  }
+
+  try {
+    await recheckPastCash(businessDate);
+  } catch (e) {
+    console.error('[poster-recheck] Xato:', e.message);
   }
 
   // 6 soatlik qulfi o'tgan kassa yozuvlarini avtomatik Poster bilan solishtiramiz

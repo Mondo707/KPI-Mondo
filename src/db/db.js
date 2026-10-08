@@ -93,6 +93,19 @@ async function init() {
       recalculated_days INTEGER NOT NULL DEFAULT 0
     );
 
+    -- Poster'dagi kassa ma'lumoti keyin o'zgarganda (masalan chek o'chirilsa) yozib boriladi (faqat admin ko'radi)
+    CREATE TABLE IF NOT EXISTS poster_change_log (
+      id SERIAL PRIMARY KEY,
+      detected_at TIMESTAMP DEFAULT now(),
+      date TEXT NOT NULL,
+      spot_id INTEGER NOT NULL,
+      old_total DOUBLE PRECISION NOT NULL,
+      new_total DOUBLE PRECISION NOT NULL,
+      details TEXT,
+      status_before INTEGER,
+      status_after INTEGER
+    );
+
     CREATE TABLE IF NOT EXISTS login_history (
       id SERIAL PRIMARY KEY,
       user_id INTEGER,

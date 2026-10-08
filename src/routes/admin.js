@@ -11,7 +11,7 @@ const { getMappingDetailed, setMapping, discoverPaymentMethods, KNOWN_CHANNELS }
 const { getSettingNumber, setSetting } = require('../services/appSettings');
 const { getAllProductsWithStatus, setOverride, removeOverride } = require('../services/productCategoryOverride');
 const { getProductById } = require('../services/bonusCalculator');
-const { getComparison, reapplyCashDiffLimit } = require('../services/cashReconcile');
+const { getComparison, reapplyCashDiffLimit, recheckRecentDays, listPosterChanges } = require('../services/cashReconcile');
 const { validateCashPayload } = require('../services/cashValidation');
 const { getAllIngredients } = require('../services/posterStorage');
 
@@ -79,6 +79,22 @@ router.put('/bonus-config', async (req, res) => {
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+// GET /api/admin/poster-changes - Poster'dagi kassa ma'lumoti keyin o'zgargan kunlar jurnali (faqat admin)
+router.get('/poster-changes', async (req, res) => {
+  res.json({ changes: await listPosterChanges(Math.min(200, Number(req.query.limit) || 60)) });
+});
+
+// POST /api/admin/poster-recheck - oxirgi kunlarni hozir qo'lda tekshirish (body: { days: 1..7 })
+router.post('/poster-recheck', async (req, res) => {
+  const days = Math.max(1, Math.min(7, Number((req.body || {}).days) || 3));
+  const stats = await recheckRecentDays(days);
+  if (stats.skipped) return res.status(409).json({ error: 'Tekshiruv hozir ishlayapti, birozdan keyin urinib ko\'ring' });
+  for (const d of stats.changedDates || []) {
+    try { await syncDate(d); } catch (e) { console.error(`[poster-recheck] ${d}:`, e.message); }
+  }
+  res.json({ ok: true, ...stats, changes: await listPosterChanges(60) });
 });
 
 // GET /api/admin/spot-categories?spot_id=6 - filial uchun kategoriyalar holati
