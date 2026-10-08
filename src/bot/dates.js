@@ -63,4 +63,15 @@ function parseDates(text) {
   return { from: a, to: b };
 }
 
-module.exports = { shift, listDates, fmtDate, nowTashkent, presetRange, parseDates };
+// "07.10.2026 (kecha)" yoki "01.10.2026 – 07.10.2026"
+function periodLabel(from, to, lang) {
+  const { t } = require('./strings');
+  if (from !== to) return `${fmtDate(from)} – ${fmtDate(to)}`;
+  const today = getCurrentBusinessDate();
+  let word = '';
+  if (from === today) word = ` (${t(lang, 'd_today')})`;
+  else if (from === shift(today, -1)) word = ` (${t(lang, 'd_yesterday')})`;
+  return fmtDate(from) + word;
+}
+
+module.exports = { periodLabel, shift, listDates, fmtDate, nowTashkent, presetRange, parseDates };

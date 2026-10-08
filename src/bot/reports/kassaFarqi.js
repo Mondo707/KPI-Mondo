@@ -7,7 +7,7 @@ const { getSettingNumber } = require('../../services/appSettings');
 const { getAllowedSpots } = require('../spotNames');
 const { renderTablePdf, fmtNum, COLOR } = require('../pdfTable');
 const { t } = require('../strings');
-const { listDates, fmtDate, nowTashkent } = require('../dates');
+const { listDates, nowTashkent, periodLabel } = require('../dates');
 
 const TOLERANCE = 1000; // so'm
 const MAX_POSTER_FETCHES = 12; // bitta hisobotda Poster'dan yangi yuklanadigan kun-filial soni
@@ -135,10 +135,7 @@ async function build({ user, spotIds, from, to, lang }) {
     ],
   };
 
-  const dayWord = from === to
-    ? (from === getCurrentBusinessDate() ? ` (${t(lang, 'd_today')})` : (from === shiftDay(getCurrentBusinessDate(), -1) ? ` (${t(lang, 'd_yesterday')})` : ''))
-    : '';
-  const periodText = from === to ? fmtDate(from) + dayWord : `${fmtDate(from)} – ${fmtDate(to)}`;
+  const periodText = periodLabel(from, to, lang);
   const subtitle = [
     t(lang, 'k_period', { period: periodText }),
     t(lang, 'k_spots', { n: chosen.length }),
@@ -164,12 +161,6 @@ async function build({ user, spotIds, from, to, lang }) {
 
   const fname = `${t(lang, 'file_kassa')}_${from}${from === to ? '' : '_' + to}.pdf`;
   return { pdf, filename: fname, caption: `📄 ${t(lang, 'k_title')}\n${periodText}` };
-}
-
-function shiftDay(d, n) {
-  const [y, m, dd] = d.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, dd + n));
-  return dt.toISOString().slice(0, 10);
 }
 
 module.exports = { build, collect, statusFor };

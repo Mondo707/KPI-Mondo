@@ -248,6 +248,8 @@ async function init() {
   // chiqardi). Boshqa jadvallar bilan bir xil bo'lishi uchun matnga ('YYYY-MM-DD') o'tkazamiz.
   // Faqat hali DATE bo'lsa ishlaydi - qayta ishga tushirganda hech narsa o'zgarmaydi.
   await pool.query(`
+    ALTER TABLE auto_reports ADD COLUMN IF NOT EXISTS category_names TEXT NOT NULL DEFAULT '[]';
+
     CREATE UNIQUE INDEX IF NOT EXISTS users_telegram_id_uq ON users (telegram_id) WHERE telegram_id IS NOT NULL;
 
     DO $$

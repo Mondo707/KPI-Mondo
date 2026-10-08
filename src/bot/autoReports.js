@@ -17,7 +17,8 @@ function toDto(r) {
   return {
     id: r.id, name: r.name, report_key: r.report_key, send_time: r.send_time, period: r.period, lang: r.lang,
     spot_ids: parseArr(r.spot_ids).map(Number), user_ids: parseArr(r.user_ids).map(Number),
-    group_ids: parseArr(r.group_ids).map(Number), enabled: !!r.enabled, last_sent_date: r.last_sent_date,
+    group_ids: parseArr(r.group_ids).map(Number), category_names: parseArr(r.category_names).map(String),
+    enabled: !!r.enabled, last_sent_date: r.last_sent_date,
   };
 }
 
@@ -64,9 +65,10 @@ async function runReport(rep, opts = {}) {
 
   const cache = new Map(); // (til|rol|filiallar) -> PDF
   async function buildFor(user, spotIds, lang) {
+    const cats = def.cats && rep.category_names.length ? rep.category_names : undefined;
     const key = `${lang}|${user.role === 'admin' ? 'a' : 'v'}|${spotIds.slice().sort((a, b) => a - b).join(',')}`;
     if (!cache.has(key)) {
-      cache.set(key, await def.build({ user, spotIds, from: range.from, to: range.to, lang }));
+      cache.set(key, await def.build({ user, spotIds, from: range.from, to: range.to, lang, categories: cats }));
     }
     return cache.get(key);
   }
@@ -105,7 +107,7 @@ async function runReport(rep, opts = {}) {
       const label = g ? `${g.title || gid} (guruh)` : `#${gid} (guruh)`;
       if (!g || !g.is_active) { summary.skipped++; await writeLog(rep, 'group', label, 'o\'tkazildi', 'Guruh ulanmagan yoki bot chiqarib yuborilgan', manual); continue; }
       try {
-        const pseudo = { id: 0, login: 'guruh', role: 'viewer', allowed_spots: [], allowed_sections: ['cash'], lang: rep.lang };
+        const pseudo = { id: 0, login: 'guruh', role: 'viewer', allowed_spots: [], allowed_sections: ['cash', 'kpi', 'daily_sales'], lang: rep.lang };
         let spotIds = rep.spot_ids;
         if (!spotIds.length) spotIds = (await getSpots()).map((s) => Number(s.spot_id));
         const out = await buildFor(pseudo, spotIds, rep.lang);

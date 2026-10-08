@@ -621,15 +621,16 @@ const botTg = require('../bot/telegramApi');
 function validateAutoReport(b) {
   const name = String(b.name || '').trim();
   if (!name || name.length > 80) return { error: 'Nom kerak (80 belgigacha)' };
-  if (b.report_key !== 'k') return { error: 'Hisobot turi noto\'g\'ri' };
+  if (!['k', 'p', 's'].includes(b.report_key)) return { error: 'Hisobot turi noto\'g\'ri' };
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.send_time || ''))) return { error: 'Vaqt HH:MM ko\'rinishida bo\'lishi kerak' };
   if (!autoReports.PERIODS.includes(b.period)) return { error: 'Davr noto\'g\'ri' };
   if (!['uz', 'ru'].includes(b.lang)) return { error: 'Til noto\'g\'ri' };
   const ints = (a) => (Array.isArray(a) ? a.map(Number).filter((n) => Number.isFinite(n)) : []);
   return {
     value: {
-      name, report_key: 'k', send_time: b.send_time, period: b.period, lang: b.lang,
+      name, report_key: b.report_key, send_time: b.send_time, period: b.period, lang: b.lang,
       spot_ids: ints(b.spot_ids), user_ids: ints(b.user_ids), group_ids: ints(b.group_ids),
+      category_names: Array.isArray(b.category_names) ? b.category_names.map(String).slice(0, 40) : [],
       enabled: b.enabled === false || b.enabled === 0 ? 0 : 1,
     },
   };
@@ -658,9 +659,9 @@ router.post('/auto-reports', async (req, res) => {
   if (v.error) return res.status(400).json({ error: v.error });
   const x = v.value;
   const r = await pool.query(
-    `INSERT INTO auto_reports (name, report_key, send_time, period, lang, spot_ids, user_ids, group_ids, enabled, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), x.enabled, req.user.login]
+    `INSERT INTO auto_reports (name, report_key, send_time, period, lang, spot_ids, user_ids, group_ids, category_names, enabled, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), JSON.stringify(x.category_names), x.enabled, req.user.login]
   );
   res.json({ ok: true, id: r.rows[0].id });
 });
@@ -670,9 +671,9 @@ router.put('/auto-reports/:id', async (req, res) => {
   if (v.error) return res.status(400).json({ error: v.error });
   const x = v.value;
   const r = await pool.query(
-    `UPDATE auto_reports SET name=$1, report_key=$2, send_time=$3, period=$4, lang=$5, spot_ids=$6, user_ids=$7, group_ids=$8, enabled=$9
-     WHERE id=$10`,
-    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), x.enabled, req.params.id]
+    `UPDATE auto_reports SET name=$1, report_key=$2, send_time=$3, period=$4, lang=$5, spot_ids=$6, user_ids=$7, group_ids=$8, category_names=$9, enabled=$10
+     WHERE id=$11`,
+    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), JSON.stringify(x.category_names), x.enabled, req.params.id]
   );
   if (!r.rowCount) return res.status(404).json({ error: 'Avto-hisobot topilmadi' });
   res.json({ ok: true });

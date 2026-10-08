@@ -41,15 +41,16 @@ function renderTablePdf(o) {
   return new Promise((resolve, reject) => {
     const landscape = !!o.landscape;
     const doc = new PDFDocument({
-      size: 'A4',
-      layout: landscape ? 'landscape' : 'portrait',
+      size: o.pageWidth ? [o.pageWidth, 595.28] : 'A4',
+      layout: o.pageWidth ? undefined : (landscape ? 'landscape' : 'portrait'),
       margin: 36,
       bufferPages: true,
       info: { Title: o.title, Author: 'Mondo Bot' },
     });
     const chunks = [];
     doc.on('data', (c) => chunks.push(c));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    let pageCount = 1;
+    doc.on('end', () => { const b = Buffer.concat(chunks); b.pages = pageCount; resolve(b); });
     doc.on('error', reject);
 
     doc.registerFont('R', FONT_REGULAR);
@@ -69,7 +70,7 @@ function renderTablePdf(o) {
     // Shrift o'lchami
     const fontSize = Math.max(o.minFont || 7, Math.min(o.maxFont || 10, o.fontSize || 10));
     const padX = 5;
-    const padY = fontSize >= 9 ? 5 : 3.5;
+    const padY = fontSize >= 9 ? 5 : (fontSize >= 8 ? 3.5 : 2.6);
 
     function drawHeader(y) {
       let h = 0;
@@ -155,6 +156,7 @@ function renderTablePdf(o) {
 
     // Pastki chiziq: bot nomi va sahifa raqami
     const range = doc.bufferedPageRange();
+    pageCount = range.count;
     for (let i = range.start; i < range.start + range.count; i++) {
       doc.switchToPage(i);
       doc.page.margins.bottom = 0; // pastki chiziq matni yangi sahifa ochib yubormasligi uchun
@@ -168,4 +170,23 @@ function renderTablePdf(o) {
   });
 }
 
-module.exports = { renderTablePdf, fmtNum, COLOR };
+// Hamma narsa BITTA listga sig'ishi kerak bo'lsa: shrift o'lchamini (minFont gacha) kichraytirib sinaydi.
+async function renderTablePdfFit(o) {
+  const max = o.fontSize || 10;
+  const min = o.minFont || 7;
+  let buf = null;
+  for (let fs = max; fs >= min - 0.001; fs -= 0.5) {
+    buf = await renderTablePdf({ ...o, fontSize: fs, minFont: Math.min(min, fs) });
+    if (buf.pages <= 1) return buf;
+  }
+  return buf; // minimal shriftda ham sig'masa - ko'p sahifali variant
+}
+
+function fmtQty(n) {
+  if (n === null || n === undefined || !Number.isFinite(Number(n))) return '—';
+  const v = Math.round(Number(n) * 100) / 100;
+  const [i, d] = String(Math.abs(v)).split('.');
+  return (v < 0 ? '-' : '') + i.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (d ? '.' + d : '');
+}
+
+module.exports = { renderTablePdf, renderTablePdfFit, fmtNum, fmtQty, COLOR };

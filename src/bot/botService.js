@@ -5,12 +5,17 @@ const { t } = require('./strings');
 const { getAllowedSpots } = require('./spotNames');
 const { presetRange, parseDates, fmtDate } = require('./dates');
 const kassaFarqi = require('./reports/kassaFarqi');
+const kpiBonus = require('./reports/kpiBonus');
+const kunlikSavdo = require('./reports/kunlikSavdo');
+const { getCurrentBusinessDate } = require('../services/businessDay');
 
 const DEFAULT_SECTIONS = ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history', 'portsiya'];
 
 // Hisobotlar ro'yxati: har biri uchun kerakli bo'lim huquqi (admin hammasiga ega)
 const REPORTS = {
   k: { section: 'cash', btn: 'btn_report_kassa', title: 'btn_report_kassa', build: kassaFarqi.build },
+  p: { section: 'kpi', btn: 'btn_report_kpi', title: 'btn_report_kpi', build: kpiBonus.build },
+  s: { section: 'daily_sales', btn: 'btn_report_sales', title: 'btn_report_sales', build: kunlikSavdo.build, cats: true },
 };
 
 const states = new Map(); // telegram_id -> { report, from, to, spots:Set, awaiting }
@@ -102,6 +107,11 @@ async function spotsScreen(user, st) {
     })));
   }
   rows.push([{ text: t(L, 'btn_all'), callback_data: 's:all' }, { text: t(L, 'btn_clear'), callback_data: 's:none' }]);
+  if (REPORTS[st.report].cats) {
+    const all = await kunlikSavdo.listCategories(getCurrentBusinessDate());
+    const n = st.catsSel ? st.catsSel.size : all.length;
+    rows.push([{ text: t(L, 'btn_cats', { n, m: all.length }), callback_data: 'c:menu' }]);
+  }
   rows.push([{ text: t(L, 'btn_make'), callback_data: 'g' }]);
   rows.push([{ text: t(L, 'btn_back'), callback_data: 'b:p' }, { text: t(L, 'btn_menu'), callback_data: 'b:m' }]);
   const period = st.from === st.to ? fmtDate(st.from) : `${fmtDate(st.from)} – ${fmtDate(st.to)}`;
@@ -109,6 +119,26 @@ async function spotsScreen(user, st) {
     text: t(L, 'pick_spots', { report: t(L, REPORTS[st.report].title), period, n: st.spots.size }),
     markup: { inline_keyboard: rows },
     spots,
+  };
+}
+
+async function catsScreen(user, st) {
+  const L = user.lang;
+  const all = await kunlikSavdo.listCategories(getCurrentBusinessDate());
+  if (!st.catsSel) st.catsSel = new Set(all.map((c) => c.name));
+  const rows = [];
+  for (let i = 0; i < all.length; i += 2) {
+    rows.push(all.slice(i, i + 2).map((c, k) => ({
+      text: `${st.catsSel.has(c.name) ? '✅' : '▫️'} ${c.name}`,
+      callback_data: `c:${i + k}`,
+    })));
+  }
+  rows.push([{ text: t(L, 'btn_all'), callback_data: 'c:all' }, { text: t(L, 'btn_clear'), callback_data: 'c:none' }]);
+  rows.push([{ text: t(L, 'btn_back_spots'), callback_data: 'b:s' }]);
+  return {
+    text: t(L, 'pick_cats', { report: t(L, REPORTS[st.report].title), n: st.catsSel.size, m: all.length }),
+    markup: { inline_keyboard: rows },
+    all,
   };
 }
 
@@ -251,7 +281,7 @@ async function onCallback(cb) {
   if (data.startsWith('r:')) {
     const key = data.slice(2);
     if (!canSee(user, key)) { await answer(t(L, 'no_access')); return; }
-    setState(from.id, { report: key, from: null, to: null, spots: new Set(), awaiting: null });
+    setState(from.id, { report: key, from: null, to: null, spots: new Set(), catsSel: null, awaiting: null });
     await answer();
     const s = periodScreen(user, key);
     return edit(chatId, mid, s.text, s.markup);
@@ -284,6 +314,32 @@ async function onCallback(cb) {
     return edit(chatId, mid, s.text, s.markup);
   }
 
+  if (data === 'b:s') {
+    await answer();
+    if (!st.from) return showMenu();
+    const s2 = await spotsScreen(user, st);
+    return edit(chatId, mid, s2.text, s2.markup);
+  }
+
+  if (data.startsWith('c:')) {
+    if (!st.from || !REPORTS[st.report].cats) { await answer(t(L, 'expired')); return showMenu(); }
+    const arg = data.slice(2);
+    if (arg !== 'menu') {
+      const all = await kunlikSavdo.listCategories(getCurrentBusinessDate());
+      if (!st.catsSel) st.catsSel = new Set(all.map((c) => c.name));
+      if (arg === 'all') all.forEach((c) => st.catsSel.add(c.name));
+      else if (arg === 'none') st.catsSel.clear();
+      else {
+        const c = all[Number(arg)];
+        if (c) { if (st.catsSel.has(c.name)) st.catsSel.delete(c.name); else st.catsSel.add(c.name); }
+      }
+      setState(from.id, {});
+    }
+    await answer();
+    const cs = await catsScreen(user, getState(from.id));
+    return edit(chatId, mid, cs.text, cs.markup);
+  }
+
   if (data.startsWith('s:')) {
     if (!st.from) { await answer(t(L, 'expired')); return showMenu(); }
     const arg = data.slice(2);
@@ -305,6 +361,7 @@ async function onCallback(cb) {
   if (data === 'g') {
     if (!st.from) { await answer(t(L, 'expired')); return showMenu(); }
     if (!st.spots.size) { await answer(t(L, 'no_spots_chosen')); return; }
+    if (REPORTS[st.report].cats && st.catsSel && st.catsSel.size === 0) { await answer(t(L, 'no_cats_chosen')); return; }
     if (busy.has(from.id)) { await answer(t(L, 'busy')); return; }
     busy.add(from.id);
     await answer(t(L, 'generating'));
@@ -312,6 +369,7 @@ async function onCallback(cb) {
       await tg.call('sendChatAction', { chat_id: chatId, action: 'upload_document' }).catch(() => {});
       const out = await REPORTS[st.report].build({
         user, spotIds: Array.from(st.spots), from: st.from, to: st.to, lang: L,
+        categories: REPORTS[st.report].cats && st.catsSel ? Array.from(st.catsSel) : undefined,
       });
       await tg.sendDocument(chatId, out.pdf, out.filename, out.caption);
     } catch (e) {
