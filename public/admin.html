@@ -273,7 +273,7 @@
         <input type="hidden" id="ar-id">
         <div class="form-row">
           <div class="field" style="flex:2;"><label for="ar-name">Nomi</label><input type="text" id="ar-name" maxlength="80" placeholder="Masalan: Ertalabki kassa farqi"></div>
-          <div class="field"><label for="ar-key">Hisobot</label><select id="ar-key"><option value="k">Kassa farqi (Fakt va Poster)</option></select></div>
+          <div class="field"><label for="ar-key">Hisobot</label><select id="ar-key"><option value="k">Kassa farqi (Fakt va Poster)</option><option value="p">KPI / Bonus holati</option><option value="s">Kunlik savdo (kategoriya bo'yicha)</option></select></div>
           <div class="field" style="max-width:130px;"><label for="ar-time">Vaqt</label><input type="time" id="ar-time" value="08:00"></div>
           <div class="field"><label for="ar-period">Davr</label><select id="ar-period"><option value="yesterday">Kecha</option><option value="last7">Oxirgi 7 kun</option><option value="month">Shu oy (bugungacha)</option></select></div>
           <div class="field" style="max-width:150px;"><label for="ar-lang">Guruh tili</label><select id="ar-lang"><option value="uz">O'zbekcha</option><option value="ru">Русский</option></select></div>
@@ -283,6 +283,7 @@
           <div class="field" style="flex:1;"><label>Foydalanuvchilar (shaxsiy chat)</label><div id="ar-users" class="spot-checks"></div></div>
           <div class="field" style="flex:1;"><label>Guruhlar</label><div id="ar-groups" class="spot-checks"></div></div>
         </div>
+        <div class="field" id="ar-cats-wrap" style="display:none; margin-bottom:10px;"><label>Kategoriyalar (hech biri belgilanmasa = hammasi)</label><div id="ar-cats" class="spot-checks"></div></div>
         <label class="spot-check-item" style="margin:6px 0 12px;"><input type="checkbox" id="ar-enabled" checked> Yoqilgan (har kuni avtomatik yuboriladi)</label>
         <div style="display:flex; gap:10px;">
           <button class="btn-primary" id="ar-save-btn" style="width:auto; padding:8px 18px;">Saqlash</button>
@@ -1564,8 +1565,24 @@
       document.getElementById('ar-log-empty').style.display = arState.log.length ? 'none' : 'block';
     }
 
+    async function renderArCats(selected) {
+      const wrap = document.getElementById('ar-cats-wrap');
+      const isSales = document.getElementById('ar-key').value === 's';
+      wrap.style.display = isSales ? 'block' : 'none';
+      if (!isSales) return;
+      if (!window.__arCatNames) {
+        try {
+          const d = await apiFetch('/bonus/tiers');
+          window.__arCatNames = sortByCategoryOrder(Object.keys(d.categories || {}));
+        } catch (e) { window.__arCatNames = []; }
+      }
+      document.getElementById('ar-cats').innerHTML = window.__arCatNames.map((c) => `
+        <label class="spot-check-item"><input type="checkbox" class="ar-cat" value="${arEsc(c)}" ${selected.includes(c) ? 'checked' : ''}> ${arEsc(c)}</label>`).join('');
+    }
+    document.getElementById('ar-key').addEventListener('change', () => renderArCats([]));
+
     function openArForm(rep) {
-      const r = rep || { id: '', name: '', report_key: 'k', send_time: '08:00', period: 'yesterday', lang: 'uz', spot_ids: [], user_ids: [], group_ids: [], enabled: true };
+      const r = rep || { id: '', name: '', report_key: 'k', send_time: '08:00', period: 'yesterday', lang: 'uz', spot_ids: [], user_ids: [], group_ids: [], category_names: [], enabled: true };
       document.getElementById('ar-id').value = r.id;
       document.getElementById('ar-name').value = r.name;
       document.getElementById('ar-key').value = r.report_key;
@@ -1581,6 +1598,7 @@
       document.getElementById('ar-groups').innerHTML = arState.groups.length ? arState.groups.map((g) => `
         <label class="spot-check-item"><input type="checkbox" class="ar-group" value="${g.chat_id}" ${r.group_ids.includes(g.chat_id) ? 'checked' : ''}> ${arEsc(g.title || g.chat_id)}${g.is_active ? '' : ' — bot chiqarilgan'}</label>`).join('')
         : '<span style="color:var(--text-dim); font-size:13px;">Ulangan guruh yo\'q</span>';
+      renderArCats(r.category_names || []);
       document.getElementById('ar-form').style.display = 'block';
       document.getElementById('ar-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
@@ -1598,6 +1616,7 @@
         period: document.getElementById('ar-period').value,
         lang: document.getElementById('ar-lang').value,
         spot_ids: pick('.ar-spot'), user_ids: pick('.ar-user'), group_ids: pick('.ar-group'),
+        category_names: document.getElementById('ar-key').value === 's' ? Array.from(document.querySelectorAll('.ar-cat:checked')).map((c) => c.value) : [],
         enabled: document.getElementById('ar-enabled').checked,
       };
       try {

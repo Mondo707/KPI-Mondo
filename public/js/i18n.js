@@ -555,7 +555,10 @@
 "Vaqt HH:MM ko'rinishida bo'lishi kerak": "Время должно быть в формате ЧЧ:ММ",
 "Sizning hisobingiz Telegram bilan bog'lanmagan. Avval o'z username'ingizni yozib, botga /start yuboring.": "Ваш аккаунт не привязан к Telegram. Сначала впишите свой username и отправьте боту /start.",
 "Foydalanuvchilar:": "Пользователи:",
-"Guruhlar:": "Группы:"
+"Guruhlar:": "Группы:",
+"KPI / Bonus holati": "KPI / Статус бонуса",
+"Kunlik savdo (kategoriya bo'yicha)": "Дневные продажи (по категориям)",
+"Kategoriyalar (hech biri belgilanmasa = hammasi)": "Категории (если ничего не отмечено — все)"
 };
   var RULES = [
     [/(\d)\s*so'm\b/g, '$1 сум'],
