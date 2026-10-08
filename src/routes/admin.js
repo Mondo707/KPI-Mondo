@@ -2,7 +2,9 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db/db');
 const { authRequired, adminOnly } = require('../middleware/auth');
-const { getEffectiveCategories, setTierConfig, validateTierContinuity } = require('../services/configService');
+const { getEffectiveCategories, changeCategoryTiers, listChanges, validateTierContinuity } = require('../services/configService');
+const tariffRecalc = require('../services/tariffRecalc');
+const { getCurrentBusinessDate } = require('../services/businessDay');
 const { syncDate } = require('../services/scheduler');
 const { getSpotCategoryStatus, setCategoryEnabled } = require('../services/spotCategoryConfig');
 const { getMappingDetailed, setMapping, discoverPaymentMethods, KNOWN_CHANNELS } = require('../services/posterPaymentMethods');
@@ -17,30 +19,63 @@ const router = express.Router();
 
 router.use(authRequired, adminOnly);
 
-// GET /api/admin/bonus-config - joriy bonus jadvalini ko'rish
+// GET /api/admin/bonus-config - bugungi ish kuni tarifi, o'zgarishlar tarixi va qayta hisoblash holati
 router.get('/bonus-config', async (req, res) => {
-  res.json({ categories: await getEffectiveCategories() });
+  res.json({
+    categories: await getEffectiveCategories(),
+    today: getCurrentBusinessDate(),
+    changes: await listChanges(40),
+    recalc: tariffRecalc.status(),
+  });
 });
 
-// PUT /api/admin/bonus-config - bitta pog'onaning bonus summasini va/yoki min/max
-// chegarasini o'zgartirish (har biri ixtiyoriy)
-// body: { category: "Лимонады", tier_index: 0, bonus: 15000, min: 10, max: 19 }
+// GET /api/admin/bonus-config/recalc-status - davr bo'yicha qayta hisoblash jarayoni
+router.get('/bonus-config/recalc-status', (req, res) => {
+  res.json({ recalc: tariffRecalc.status() });
+});
+
+// PUT /api/admin/bonus-config - bitta kategoriyaning barcha pog'onalarini saqlash
+// body: { category, tiers: [{min,max,bonus}, ...],
+//         apply: 'today' (standart: bugungi ish kunidan boshlab) | 'range' (date_from..date_to),
+//         date_from, date_to (apply='range' uchun; date_to bo'sh bo'lsa - date_from dan boshlab doimiy) }
 router.put('/bonus-config', async (req, res) => {
-  const { category, tier_index, bonus, min, max } = req.body || {};
-  if (!category || tier_index === undefined) {
-    return res.status(400).json({ error: 'category, tier_index kerak' });
+  const { category, tiers, apply, date_from, date_to } = req.body || {};
+  if (!category || !Array.isArray(tiers)) {
+    return res.status(400).json({ error: 'category, tiers kerak' });
+  }
+  if (apply === 'range' && !date_from) {
+    return res.status(400).json({ error: 'Davr uchun boshlanish sanasi (date_from) kerak' });
+  }
+  if (tariffRecalc.status().running && apply === 'range') {
+    return res.status(409).json({ error: 'Oldingi davr hali qayta hisoblanyapti. Tugashini kuting.' });
   }
   try {
-    await setTierConfig(category, Number(tier_index), {
-      bonus: bonus !== undefined ? Number(bonus) : undefined,
-      min: min !== undefined && min !== null && min !== '' ? Number(min) : undefined,
-      max: max !== undefined && max !== null && max !== '' ? Number(max) : undefined,
+    const result = await changeCategoryTiers(category, tiers, {
+      from: apply === 'range' ? date_from : undefined,
+      to: apply === 'range' && date_to ? date_to : undefined,
+      userLogin: req.user && req.user.login,
     });
 
     const categories = await getEffectiveCategories();
-    const warnings = validateTierContinuity(categories[category].tiers);
+    const warnings = validateTierContinuity(tiers.map((t) => ({
+      min: Number(t.min), max: t.max === null || t.max === '' || t.max === undefined ? null : Number(t.max),
+    })));
 
-    res.json({ ok: true, categories, warnings });
+    let recalcDays = 0;
+    if (result.changed) {
+      const today = getCurrentBusinessDate();
+      // Bugungi kun ham darhol yangi tarif bilan yangilansin (keyingi 15 daqiqalik sinxronni kutmasdan)
+      const dates = [...result.affectedPastDates];
+      if (result.from <= today && (result.to === null || result.to >= today) && !dates.includes(today)) dates.push(today);
+      recalcDays = dates.length;
+      if (dates.length) tariffRecalc.start({ category, from: result.from, dates });
+    }
+
+    res.json({
+      ok: true, changed: result.changed, summary: result.summary,
+      from: result.from, to: result.to, recalc_days: recalcDays,
+      categories, warnings, changes: await listChanges(40),
+    });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

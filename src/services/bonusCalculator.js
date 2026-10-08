@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getEffectiveCategories } = require('./configService');
+const { getCategoriesForDate } = require('./configService');
 const { getDisabledCategories } = require('./spotCategoryConfig');
 const { getOverridesMap } = require('./productCategoryOverride');
 
@@ -78,8 +78,11 @@ async function aggregateQuantities(transactions) {
  * Berilgan miqdor uchun mos pog'onani topib, bonus summasini qaytaradi.
  * Agar miqdor birinchi pog'onadan kam bo'lsa (masalan 10 tadan kam), bonus 0.
  */
-async function tierBonus(category, quantity) {
-  const categories = await getEffectiveCategories();
+async function tierBonus(category, quantity, categoriesOrDate) {
+  // categoriesOrDate: tayyor tarif obyekti yoki ish kuni ('YYYY-MM-DD'; berilmasa - bugungi tarif)
+  const categories = (categoriesOrDate && typeof categoriesOrDate === 'object')
+    ? categoriesOrDate
+    : await getCategoriesForDate(categoriesOrDate);
   const cfg = categories[category];
   if (!cfg) return 0;
 
@@ -106,13 +109,16 @@ async function calculateDailyBonus(transactions, options = {}) {
   const breakdown = [];
   let total = 0;
 
+  // Tarif shu ish kuniga mos olinadi (o'tgan kunlar o'sha kundagi tarif bilan hisoblanadi)
+  const tariff = await getCategoriesForDate(options.date);
+
   const disabledCategories = options.spotId
     ? await getDisabledCategories(options.spotId)
     : new Set();
 
   for (const [category, qty] of quantities.entries()) {
     if (disabledCategories.has(category)) continue;
-    const bonus = options.cashDiffOk === false ? 0 : await tierBonus(category, qty);
+    const bonus = options.cashDiffOk === false ? 0 : await tierBonus(category, qty, tariff);
     breakdown.push({ category, quantity: Math.round(qty * 100) / 100, bonus });
     total += bonus;
   }

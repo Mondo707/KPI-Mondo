@@ -28,7 +28,8 @@ const router = express.Router();
 // Har qanday login qilgan foydalanuvchi ko'ra oladi (maxfiy emas, xodimlar uchun
 // ham "Bonus jadvali" sahifasida ko'rsatiladi).
 router.get('/tiers', authRequired, async (req, res) => {
-  res.json({ categories: await getEffectiveCategories() });
+  // ?date=YYYY-MM-DD - shu ish kuniga amal qilgan tarif (berilmasa - bugungi)
+  res.json({ categories: await getEffectiveCategories(req.query.date) });
 });
 
 // GET /api/bonus/journal?spot_id=6&date_from=2026-08-01&date_to=2026-08-23&category=Лимонады

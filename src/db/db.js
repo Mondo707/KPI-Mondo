@@ -74,6 +74,25 @@ async function init() {
       PRIMARY KEY (category, tier_index)
     );
 
+    -- Tarif versiyalari: har bir yozuv "shu sanadan boshlab amal qiladigan to'liq tarif"
+    CREATE TABLE IF NOT EXISTS bonus_config_versions (
+      effective_from TEXT PRIMARY KEY,
+      snapshot TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT now()
+    );
+
+    -- Tarif o'zgarishlari tarixi (admin ko'radi)
+    CREATE TABLE IF NOT EXISTS bonus_config_changes (
+      id SERIAL PRIMARY KEY,
+      created_at TIMESTAMP DEFAULT now(),
+      user_login TEXT,
+      category TEXT NOT NULL,
+      effective_from TEXT NOT NULL,
+      effective_to TEXT,
+      summary TEXT NOT NULL,
+      recalculated_days INTEGER NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS login_history (
       id SERIAL PRIMARY KEY,
       user_id INTEGER,
