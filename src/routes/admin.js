@@ -613,4 +613,111 @@ router.delete('/portion-entries/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+
+// ================== Telegram avto-hisobotlar ==================
+const autoReports = require('../bot/autoReports');
+const botTg = require('../bot/telegramApi');
+
+function validateAutoReport(b) {
+  const name = String(b.name || '').trim();
+  if (!name || name.length > 80) return { error: 'Nom kerak (80 belgigacha)' };
+  if (b.report_key !== 'k') return { error: 'Hisobot turi noto\'g\'ri' };
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.send_time || ''))) return { error: 'Vaqt HH:MM ko\'rinishida bo\'lishi kerak' };
+  if (!autoReports.PERIODS.includes(b.period)) return { error: 'Davr noto\'g\'ri' };
+  if (!['uz', 'ru'].includes(b.lang)) return { error: 'Til noto\'g\'ri' };
+  const ints = (a) => (Array.isArray(a) ? a.map(Number).filter((n) => Number.isFinite(n)) : []);
+  return {
+    value: {
+      name, report_key: 'k', send_time: b.send_time, period: b.period, lang: b.lang,
+      spot_ids: ints(b.spot_ids), user_ids: ints(b.user_ids), group_ids: ints(b.group_ids),
+      enabled: b.enabled === false || b.enabled === 0 ? 0 : 1,
+    },
+  };
+}
+
+// GET /api/admin/auto-reports - ro'yxat, ulangan guruhlar, bog'langan foydalanuvchilar va jurnal
+router.get('/auto-reports', async (req, res) => {
+  const reps = await pool.query('SELECT * FROM auto_reports ORDER BY id');
+  const groups = await pool.query('SELECT chat_id, title, registered_by, registered_at, is_active FROM bot_groups ORDER BY registered_at DESC');
+  const users = await pool.query(
+    `SELECT id, login, role, is_active, telegram_username, (telegram_id IS NOT NULL) AS linked
+     FROM users WHERE telegram_username IS NOT NULL ORDER BY login`
+  );
+  const log = await pool.query('SELECT * FROM auto_report_log ORDER BY id DESC LIMIT 60');
+  res.json({
+    bot_enabled: botTg.enabled(),
+    reports: reps.rows.map(autoReports.toDto),
+    groups: groups.rows.map((g) => ({ ...g, chat_id: Number(g.chat_id), is_active: !!g.is_active })),
+    users: users.rows.map((u) => ({ ...u, is_active: !!u.is_active })),
+    log: log.rows,
+  });
+});
+
+router.post('/auto-reports', async (req, res) => {
+  const v = validateAutoReport(req.body || {});
+  if (v.error) return res.status(400).json({ error: v.error });
+  const x = v.value;
+  const r = await pool.query(
+    `INSERT INTO auto_reports (name, report_key, send_time, period, lang, spot_ids, user_ids, group_ids, enabled, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), x.enabled, req.user.login]
+  );
+  res.json({ ok: true, id: r.rows[0].id });
+});
+
+router.put('/auto-reports/:id', async (req, res) => {
+  const v = validateAutoReport(req.body || {});
+  if (v.error) return res.status(400).json({ error: v.error });
+  const x = v.value;
+  const r = await pool.query(
+    `UPDATE auto_reports SET name=$1, report_key=$2, send_time=$3, period=$4, lang=$5, spot_ids=$6, user_ids=$7, group_ids=$8, enabled=$9
+     WHERE id=$10`,
+    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), x.enabled, req.params.id]
+  );
+  if (!r.rowCount) return res.status(404).json({ error: 'Avto-hisobot topilmadi' });
+  res.json({ ok: true });
+});
+
+router.delete('/auto-reports/:id', async (req, res) => {
+  const r = await pool.query('DELETE FROM auto_reports WHERE id = $1', [req.params.id]);
+  if (!r.rowCount) return res.status(404).json({ error: 'Avto-hisobot topilmadi' });
+  res.json({ ok: true });
+});
+
+// POST /api/admin/auto-reports/:id/send - hozir yuborish. body: { only_me: true } - faqat adminning o'ziga (sinov)
+const sending = new Set();
+router.post('/auto-reports/:id/send', async (req, res) => {
+  if (!botTg.enabled()) return res.status(400).json({ error: 'TELEGRAM_BOT_TOKEN sozlanmagan' });
+  const r = await pool.query('SELECT * FROM auto_reports WHERE id = $1', [req.params.id]);
+  if (!r.rows[0]) return res.status(404).json({ error: 'Avto-hisobot topilmadi' });
+  const onlyMe = !!(req.body && req.body.only_me);
+  if (onlyMe) {
+    const me = await pool.query('SELECT telegram_id FROM users WHERE id = $1', [req.user.id]);
+    if (!me.rows[0] || !me.rows[0].telegram_id) {
+      return res.status(400).json({ error: 'Sizning hisobingiz Telegram bilan bog\'lanmagan. Avval o\'z username\'ingizni yozib, botga /start yuboring.' });
+    }
+  }
+  if (sending.has(req.params.id)) return res.status(429).json({ error: 'Bu hisobot hozir yuborilmoqda, biroz kuting' });
+  sending.add(req.params.id);
+  try {
+    const s = await autoReports.runReport(autoReports.toDto(r.rows[0]), { manual: true, onlyUserId: onlyMe ? req.user.id : null });
+    res.json({ ok: true, ...s });
+  } finally {
+    sending.delete(req.params.id);
+  }
+});
+
+router.delete('/bot-groups/:chat_id', async (req, res) => {
+  await pool.query('DELETE FROM bot_groups WHERE chat_id = $1', [req.params.chat_id]);
+  // Avto-hisobotlardan ham olib tashlaymiz
+  const reps = await pool.query('SELECT id, group_ids FROM auto_reports');
+  for (const row of reps.rows) {
+    const ids = autoReports.parseArr(row.group_ids).map(Number);
+    if (ids.includes(Number(req.params.chat_id))) {
+      await pool.query('UPDATE auto_reports SET group_ids = $1 WHERE id = $2', [JSON.stringify(ids.filter((g) => g !== Number(req.params.chat_id))), row.id]);
+    }
+  }
+  res.json({ ok: true });
+});
+
 module.exports = router;

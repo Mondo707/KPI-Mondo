@@ -39,6 +39,8 @@ const S = {
     no_access: '🔒 Bu hisobotga ruxsatingiz yo\'q.',
     no_spots_access: '🔒 Sizga filiallar biriktirilmagan.',
     private_only: 'Bot bilan shaxsiy chatda ishlang.',
+    group_admin_only: '🔒 Guruhni faqat Telegram\'i bog\'langan admin ulashi mumkin.',
+    group_ok: '✅ Guruh ulandi{title}. Endi admin panelda «Avto-hisobotlar» bo\'limida bu guruhni tanlang.',
     // PDF
     k_title: 'Kassa farqi — Fakt va Poster',
     k_period: 'Davr: {period}',
@@ -104,6 +106,8 @@ const S = {
     no_access: '🔒 У вас нет доступа к этому отчёту.',
     no_spots_access: '🔒 Вам не назначены филиалы.',
     private_only: 'Работайте с ботом в личном чате.',
+    group_admin_only: '🔒 Подключить группу может только администратор с привязанным Telegram.',
+    group_ok: '✅ Группа подключена{title}. Теперь выберите её в админ-панели, раздел «Авто-отчёты».',
     k_title: 'Разница кассы — Факт и Poster',
     k_period: 'Период: {period}',
     k_spots: 'Филиалов: {n}',

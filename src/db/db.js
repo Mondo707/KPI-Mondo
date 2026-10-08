@@ -106,6 +106,43 @@ async function init() {
       status_after INTEGER
     );
 
+    -- Telegram bot: guruhlar (admin /guruh buyrug'i bilan ulaydi) va avtomatik hisobotlar
+    CREATE TABLE IF NOT EXISTS bot_groups (
+      chat_id BIGINT PRIMARY KEY,
+      title TEXT,
+      registered_by TEXT,
+      registered_at TIMESTAMP DEFAULT now(),
+      is_active INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS auto_reports (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      report_key TEXT NOT NULL DEFAULT 'k',
+      send_time TEXT NOT NULL DEFAULT '08:00',
+      period TEXT NOT NULL DEFAULT 'yesterday',
+      lang TEXT NOT NULL DEFAULT 'uz',
+      spot_ids TEXT NOT NULL DEFAULT '[]',
+      user_ids TEXT NOT NULL DEFAULT '[]',
+      group_ids TEXT NOT NULL DEFAULT '[]',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_sent_date TEXT,
+      created_by TEXT,
+      created_at TIMESTAMP DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS auto_report_log (
+      id SERIAL PRIMARY KEY,
+      created_at TIMESTAMP DEFAULT now(),
+      auto_id INTEGER,
+      report_name TEXT,
+      target_type TEXT,
+      target_label TEXT,
+      status TEXT NOT NULL,
+      detail TEXT,
+      manual INTEGER NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS login_history (
       id SERIAL PRIMARY KEY,
       user_id INTEGER,

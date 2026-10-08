@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const express = require('express');
 const tg = require('./telegramApi');
 const { handleUpdate } = require('./botService');
+const { startAutoReports } = require('./autoReports');
 
 function secretToken() {
   // Tokendan olingan barqaror maxfiy kalit (Telegram har so'rovda shuni qaytaradi)
@@ -25,6 +26,7 @@ async function initBot() {
     console.log('[bot] TELEGRAM_BOT_TOKEN yo\'q - Telegram bot o\'chirilgan.');
     return;
   }
+  startAutoReports();
   const base = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
   if (!base) {
     console.log('[bot] PUBLIC_URL/RENDER_EXTERNAL_URL yo\'q - webhook o\'rnatilmadi (faqat lokal sinov).');
@@ -34,7 +36,7 @@ async function initBot() {
     await tg.call('setWebhook', {
       url: `${base}/api/telegram/webhook`,
       secret_token: secretToken(),
-      allowed_updates: ['message', 'callback_query'],
+      allowed_updates: ['message', 'callback_query', 'my_chat_member'],
       drop_pending_updates: false,
     });
     await tg.call('setMyCommands', {

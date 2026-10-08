@@ -153,9 +153,37 @@ async function requireUser(from, chatId) {
 }
 
 // ---------- xabarlar ----------
+// Guruhda faqat bitta buyruq ishlaydi: /guruh (faqat bog'langan admin yuborsa guruh ro'yxatga olinadi)
+async function onGroupMessage(msg) {
+  const text = (msg.text || '').trim();
+  if (!/^\/guruh(@\w+)?(\s|$)/i.test(text)) return;
+  const chatId = msg.chat.id;
+  const row = msg.from ? await findLinked(msg.from.id) : null;
+  if (!row || row.role !== 'admin' || !row.is_active) {
+    return send(chatId, t('uz', 'group_admin_only') + '\n' + t('ru', 'group_admin_only'));
+  }
+  await pool.query(
+    `INSERT INTO bot_groups (chat_id, title, registered_by, registered_at, is_active)
+     VALUES ($1, $2, $3, now(), 1)
+     ON CONFLICT (chat_id) DO UPDATE SET title = EXCLUDED.title, registered_by = EXCLUDED.registered_by, is_active = 1`,
+    [chatId, msg.chat.title || String(chatId), row.login]
+  );
+  const ttl = msg.chat.title ? ` «${msg.chat.title}»` : '';
+  return send(chatId, t('uz', 'group_ok', { title: ttl }) + '\n' + t('ru', 'group_ok', { title: ttl }));
+}
+
+async function onMyChatMember(upd) {
+  const chat = upd.chat;
+  if (!chat || chat.type === 'private') return;
+  const status = upd.new_chat_member && upd.new_chat_member.status;
+  if (status === 'left' || status === 'kicked') {
+    await pool.query('UPDATE bot_groups SET is_active = 0 WHERE chat_id = $1', [chat.id]);
+  }
+}
+
 async function onMessage(msg) {
   const chatId = msg.chat.id;
-  if (msg.chat.type !== 'private') return; // guruhlarda interaktiv buyruqlar yo'q
+  if (msg.chat.type !== 'private') return onGroupMessage(msg);
   const from = msg.from;
   const text = (msg.text || '').trim();
 
@@ -302,9 +330,10 @@ async function handleUpdate(update) {
   try {
     if (update.message) return await onMessage(update.message);
     if (update.callback_query) return await onCallback(update.callback_query);
+    if (update.my_chat_member) return await onMyChatMember(update.my_chat_member);
   } catch (e) {
     console.error('[bot] update xatosi:', e.message);
   }
 }
 
-module.exports = { handleUpdate };
+module.exports = { handleUpdate, toUser, canSee, REPORTS };
