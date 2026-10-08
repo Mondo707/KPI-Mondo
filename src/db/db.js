@@ -177,6 +177,10 @@ async function init() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_plain TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_sections TEXT NOT NULL DEFAULT '["kpi","daily_sales","bonus_table","cash","savdo","login_history","portsiya"]';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_username TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id BIGINT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_lang TEXT NOT NULL DEFAULT 'uz';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_linked_at TIMESTAMP;
 
     ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS expenses TEXT NOT NULL DEFAULT '[]';
     ALTER TABLE cash_entries ADD COLUMN IF NOT EXISTS banknotes TEXT NOT NULL DEFAULT '{}';
@@ -207,6 +211,8 @@ async function init() {
   // chiqardi). Boshqa jadvallar bilan bir xil bo'lishi uchun matnga ('YYYY-MM-DD') o'tkazamiz.
   // Faqat hali DATE bo'lsa ishlaydi - qayta ishga tushirganda hech narsa o'zgarmaydi.
   await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS users_telegram_id_uq ON users (telegram_id) WHERE telegram_id IS NOT NULL;
+
     DO $$
     BEGIN
       IF EXISTS (

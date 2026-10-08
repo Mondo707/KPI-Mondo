@@ -236,6 +236,9 @@ router.post('/users', async (req, res) => {
   if (!login || !password) {
     return res.status(400).json({ error: 'login va password kerak' });
   }
+  if (String(password).length < 6) {
+    return res.status(400).json({ error: 'Parol kamida 6 belgidan iborat bo\'lishi kerak' });
+  }
   const hash = bcrypt.hashSync(password, 10);
   try {
     await pool.query(
@@ -254,7 +257,7 @@ router.post('/users', async (req, res) => {
 // GET /api/admin/users - foydalanuvchilar ro'yxati
 router.get('/users', async (req, res) => {
   const result = await pool.query(
-    'SELECT id, login, role, allowed_spots, allowed_sections, password_plain, is_active, last_login_at, created_at FROM users ORDER BY id'
+    'SELECT id, login, role, allowed_spots, allowed_sections, password_plain, is_active, last_login_at, created_at, telegram_username, telegram_id, telegram_lang, telegram_linked_at FROM users ORDER BY id'
   );
   res.json({
     users: result.rows.map((u) => ({
@@ -262,8 +265,39 @@ router.get('/users', async (req, res) => {
       allowed_spots: JSON.parse(u.allowed_spots),
       allowed_sections: JSON.parse(u.allowed_sections || '["kpi","daily_sales","bonus_table","cash","savdo","login_history","portsiya"]'),
       is_active: !!u.is_active,
+      telegram_linked: !!u.telegram_id,
+      telegram_id: undefined,
     })),
   });
+});
+
+// PUT /api/admin/users/:id/telegram - foydalanuvchining Telegram username'ini belgilash
+// body: { username: '@ali_valiyev' } (bo'sh qiymat = bog'lanishni o'chirish)
+router.put('/users/:id/telegram', async (req, res) => {
+  const { id } = req.params;
+  let username = String((req.body || {}).username || '').trim().replace(/^@/, '').replace(/^https?:\/\/t\.me\//i, '');
+  if (username && !/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(username)) {
+    return res.status(400).json({ error: 'Telegram username noto\'g\'ri (5-32 belgi: lotin harf, raqam, pastki chiziq; harf bilan boshlanadi)' });
+  }
+  const lower = username.toLowerCase();
+  if (lower) {
+    const dup = await pool.query('SELECT login FROM users WHERE lower(telegram_username) = $1 AND id <> $2', [lower, id]);
+    if (dup.rows.length) {
+      return res.status(409).json({ error: `Bu username boshqa foydalanuvchiga (${dup.rows[0].login}) biriktirilgan` });
+    }
+  }
+  const cur = await pool.query('SELECT telegram_username FROM users WHERE id = $1', [id]);
+  if (!cur.rows.length) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+  const changed = (cur.rows[0].telegram_username || '').toLowerCase() !== lower;
+  // Username o'zgarsa yoki o'chirilsa, eski Telegram profil bilan bog'lanish uziladi (qayta /start kerak)
+  await pool.query(
+    `UPDATE users SET telegram_username = $1,
+       telegram_id = CASE WHEN $3 THEN NULL ELSE telegram_id END,
+       telegram_linked_at = CASE WHEN $3 THEN NULL ELSE telegram_linked_at END
+     WHERE id = $2`,
+    [lower || null, id, changed]
+  );
+  res.json({ ok: true, telegram_username: lower || null });
 });
 
 // PUT /api/admin/users/:id/status - foydalanuvchini faollashtirish/faolsizlantirish
@@ -321,8 +355,8 @@ router.put('/users/:id/sections', async (req, res) => {
 router.put('/users/:id/password', async (req, res) => {
   const { id } = req.params;
   const { password } = req.body || {};
-  if (!password || password.length < 4) {
-    return res.status(400).json({ error: 'Parol kamida 4 belgidan iborat bo\'lishi kerak' });
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: 'Parol kamida 6 belgidan iborat bo\'lishi kerak' });
   }
   const hash = bcrypt.hashSync(password, 10);
   const result = await pool.query('UPDATE users SET password_hash = $1, password_plain = $2 WHERE id = $3', [

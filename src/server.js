@@ -16,6 +16,7 @@ const cashRoutes = require('./routes/cash');
 const loginHistoryRoutes = require('./routes/loginHistory');
 const portionRoutes = require('./routes/portion');
 const { startScheduler } = require('./services/scheduler');
+const { webhookRouter, initBot } = require('./bot');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -73,6 +74,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/cash', cashRoutes);
 app.use('/api/login-history', loginHistoryRoutes);
 app.use('/api/portion', portionRoutes);
+app.use('/api/telegram', webhookRouter());
 
 app.use((err, req, res, next) => {
   console.error('[server] So\'rovda xato:', req.method, req.originalUrl, '-', err && err.message ? err.message : err);
@@ -93,6 +95,7 @@ async function start() {
   app.listen(PORT, () => {
     console.log(`KPI backend http://localhost:${PORT} portida ishga tushdi`);
     startScheduler();
+    initBot();
   });
 }
 
