@@ -1033,3 +1033,12 @@ td.indent { padding-left: 26px; color: var(--text-dim); }
 .mobile-menu .lang-toggle { margin-bottom: 8px; }
 .lang-floating { position: fixed; top: 12px; right: 12px; z-index: 400; }
 .lang-floating .lang-toggle { width: auto; margin: 0; padding: 5px 8px; }
+
+/* ---- Admin panel tablari ---- */
+.admin-title { font-size: 26px; margin: 4px 0 14px; }
+.admin-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); overflow-x: auto; margin-bottom: 18px; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+.admin-tab { background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 10px 16px; color: var(--text-dim); font: inherit; font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer; width: auto; }
+.admin-tab:hover { color: var(--text); }
+.admin-tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 700; }
+.admin-tab .tab-count { font-size: 11px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 9px; padding: 0 6px; margin-left: 6px; color: var(--text-dim); font-weight: 500; }
+@media (max-width: 600px) { .admin-title { font-size: 20px; } .admin-tab { padding: 9px 12px; font-size: 13px; } }

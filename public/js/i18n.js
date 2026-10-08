@@ -558,7 +558,21 @@
 "Guruhlar:": "Группы:",
 "KPI / Bonus holati": "KPI / Статус бонуса",
 "Kunlik savdo (kategoriya bo'yicha)": "Дневные продажи (по категориям)",
-"Kategoriyalar (hech biri belgilanmasa = hammasi)": "Категории (если ничего не отмечено — все)"
+"Kategoriyalar (hech biri belgilanmasa = hammasi)": "Категории (если ничего не отмечено — все)",
+"Ish kuni chegarasi tekshiruvi (05:00)": "Проверка границы рабочего дня (05:00)",
+"Bonus va kassa hisobi ish kuni chegarasidagi (05:00 atrofidagi) cheklarni bir xil kunga qo'yayotganini tekshiradi. Faqat o'qiydi: Poster va bazaga hech narsa yozmaydi. Natijani nusxalab Claude'ga yuboring.": "Проверяет, относят ли расчёт бонусов и кассы чеки на границе рабочего дня (около 05:00) к одному и тому же дню. Только чтение: в Poster и базу ничего не записывается. Скопируйте результат и отправьте Claude.",
+"Ish kuni": "Рабочий день",
+"Tekshirish": "Проверить",
+"Nusxalash": "Копировать",
+"Nusxalandi": "Скопировано",
+"Hammasi": "Все",
+"Poster bilan tekshirilmoqda... (10-30 soniya)": "Идёт проверка с Poster... (10–30 секунд)",
+"Matn belgilandi, Ctrl+C bosing": "Текст выделен, нажмите Ctrl+C",
+"Tekshiruv hozir ishlayapti, biroz kuting": "Проверка уже идёт, подождите",
+"Foydalanuvchilar": "Пользователи",
+"Telegram bot": "Telegram-бот",
+"Bonus va tarif": "Бонус и тариф",
+"Poster sozlamalari": "Настройки Poster"
 };
   var RULES = [
     [/(\d)\s*so'm\b/g, '$1 сум'],

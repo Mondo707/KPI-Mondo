@@ -14,7 +14,16 @@
 </head>
 <body>
   <div class="container">
-    <div class="section">
+    <h1 class="admin-title">Admin panel</h1>
+    <div class="admin-tabs" id="admin-tabs" role="tablist">
+      <button class="admin-tab" data-tab-btn="users">Foydalanuvchilar <span class="tab-count" id="tab-count-users" style="display:none;"></span></button>
+      <button class="admin-tab" data-tab-btn="telegram">Telegram bot</button>
+      <button class="admin-tab" data-tab-btn="bonus">Bonus va tarif</button>
+      <button class="admin-tab" data-tab-btn="cash">Kassa</button>
+      <button class="admin-tab" data-tab-btn="poster">Poster sozlamalari</button>
+      <button class="admin-tab" data-tab-btn="portion">Portsiya</button>
+    </div>
+    <div class="section" data-tab="cash">
       <h2>Tarixiy ma'lumotlarni yuklash (backfill)</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
         Tizim har bir kunni Poster'dan avtomatik faqat "bugungi kun" uchun oladi. Eski sanalarni ko'rish uchun
@@ -34,7 +43,7 @@
       <div id="sync-result" style="margin-top:12px; font-size:13px; color:var(--text-dim);"></div>
     </div>
 
-    <div class="section">
+    <div class="section" data-tab="bonus">
       <h2>Bonus jadvalini sozlash</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">Qiymatni o'zgartiring, so'ng "Bugundan boshlab saqlash" yoki "Davr bilan qo'llash" tugmasini bosing. Tugmasiz hech narsa o'zgarmaydi.</p>
       <div id="tariff-recalc-status" style="display:none; margin-bottom:12px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px;"></div>
@@ -43,7 +52,7 @@
       <div id="tariff-history"></div>
     </div>
 
-    <div class="section" style="border-color: var(--brand-purple);">
+    <div class="section" data-tab="poster" style="border-color: var(--brand-purple);">
       <h2>Mahsulotlarni kategoriyaga bog'lash <span id="unmatched-count-badge"></span></h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
         Poster'da yangi mahsulot qo'shilsa, u avtomatik hech qaysi bonus kategoriyasiga tushmaydi. Shu yerda
@@ -70,7 +79,7 @@
       <div class="empty-state" id="products-empty" style="display:none;">Mahsulotlar topilmadi</div>
     </div>
 
-    <div class="section" style="border-color: var(--brand-purple);">
+    <div class="section" data-tab="portion" style="border-color: var(--brand-purple);">
       <h2>Portsiya ingredientlari</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
         Смесь/Шарик bilan cheklanmaydi — xohlagancha ingredient qo'shishingiz mumkin. Har biri xodimlar
@@ -98,7 +107,7 @@
       </div>
     </div>
 
-    <div class="section" style="border-color: var(--brand-purple);">
+    <div class="section" data-tab="portion" style="border-color: var(--brand-purple);">
       <h2>Portsiya yozuvlari</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
         Xodimlar kiritgan Portsiya ma'lumotlarini bu yerdan tahrirlash yoki o'chirish mumkin.
@@ -125,7 +134,7 @@
       <div class="empty-state" id="portion-entries-empty" style="display:none;">Yozuv topilmadi</div>
     </div>
 
-    <div class="section">
+    <div class="section" data-tab="bonus">
       <h2>Filial bo'yicha kategoriya sozlamalari</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
         Ba'zi kategoriyalar ma'lum filialga tegishli bo'lmasligi mumkin — shu yerda o'sha filial uchun
@@ -141,7 +150,7 @@
       <div id="spot-categories-wrap" style="margin-top:14px;"></div>
     </div>
 
-    <div class="section" style="border-color: var(--brand-purple);">
+    <div class="section" data-tab="bonus" style="border-color: var(--brand-purple);">
       <h2>Kassa farqi chegarasi (bonus qoidasi)</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
         Agar kunlik <b>Umumiy kassa</b> (Наличные + Безналичные + Сертификат jami) farqi shu foizdan
@@ -159,7 +168,7 @@
       </p>
     </div>
 
-    <div class="section">
+    <div class="section" data-tab="poster">
       <h2>Poster klient xaritasi (Yandex eats / Jiz-Biz restaurant)</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
         Poster'da bu kanallar alohida "mijoz" (client) sifatida qayd etiladi. Shu kanalning Poster'dagi
@@ -185,7 +194,7 @@
       </div>
     </div>
 
-    <div class="section">
+    <div class="section" data-tab="poster">
       <h2>To'lov turi xaritasi (UZCARD / HUMO / Uz Qr Kod / Click / Payme / Uzum / Alif / Paynet)</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
         Poster'dagi karta to'lovlarini aniq kanalga bog'lash uchun. Avval "Aniqlash" tugmasini bosing —
@@ -214,7 +223,7 @@
       </table>
     </div>
 
-    <div class="section">
+    <div class="section" data-tab="users">
       <h2>Yangi foydalanuvchi qo'shish</h2>
       <div class="form-row">
         <div class="field">
@@ -253,7 +262,7 @@
       <div id="new-user-result" style="margin-top:12px;"></div>
     </div>
 
-    <div class="section">
+    <div class="section" data-tab="users">
       <h2>Foydalanuvchilar ro'yxati</h2>
       <table>
         <thead>
@@ -263,7 +272,7 @@
       </table>
     </div>
 
-    <div class="section">
+    <div class="section" data-tab="telegram">
       <h2>Telegram avto-hisobotlar</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">Hisobot har kuni belgilangan vaqtda tanlangan foydalanuvchilarga (ularning shaxsiy chatiga) va Telegram guruhlarga PDF bo'lib boradi. Foydalanuvchi o'z filiallari va huquqlari doirasida oladi. Guruhga faqat shu yerda belgilangan hisobotlar boradi. Vaqt Toshkent vaqti bilan, ish kuni 05:00 da boshlanadi, shuning uchun "Kecha" hisoboti uchun 05:00 dan keyingi vaqtni tanlang.</p>
       <div id="ar-bot-warn" style="display:none; color:var(--danger, #e5484d); font-size:13px; margin-bottom:10px;">⚠️ TELEGRAM_BOT_TOKEN sozlanmagan, bot o'chirilgan.</div>
@@ -313,7 +322,19 @@
       <div class="empty-state" id="ar-log-empty" style="display:none;">Jurnal bo'sh</div>
     </div>
 
-    <div class="section">
+    <div class="section" data-tab="cash">
+      <h2>Ish kuni chegarasi tekshiruvi (05:00)</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">Bonus va kassa hisobi ish kuni chegarasidagi (05:00 atrofidagi) cheklarni bir xil kunga qo'yayotganini tekshiradi. Faqat o'qiydi: Poster va bazaga hech narsa yozmaydi. Natijani nusxalab Claude'ga yuboring.</p>
+      <div class="form-row">
+        <div class="field" style="max-width:200px;"><label for="bc-date">Ish kuni</label><input type="date" id="bc-date"></div>
+        <div class="field" style="max-width:280px;"><label for="bc-spot">Filial</label><select id="bc-spot"><option value="">Hammasi</option></select></div>
+        <button class="btn-primary" id="bc-run-btn" style="max-width:150px;">Tekshirish</button>
+        <button class="btn-secondary" id="bc-copy-btn" style="max-width:150px; display:none;">Nusxalash</button>
+      </div>
+      <pre id="bc-out" style="display:none; margin-top:12px; padding:12px; border:1px solid var(--border, #2a3350); border-radius:10px; overflow:auto; max-height:480px; font-size:12px; white-space:pre;"></pre>
+    </div>
+
+    <div class="section" data-tab="cash">
       <h2>Poster o'zgarishlari jurnali</h2>
       <p style="color:var(--text-dim); font-size:13px; margin-top:0;">Kassa Poster bilan solishtirilgandan keyin Poster'dagi raqam o'zgarsa (masalan chek o'chirilsa), tizim oxirgi 3 kunni har ertalab tekshirib, kunni avtomatik qayta hisoblaydi va bu yerga yozib qo'yadi. Bu jurnal faqat adminga ko'rinadi.</p>
       <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:12px;">
@@ -323,7 +344,7 @@
       <div id="poster-changes-wrap"></div>
     </div>
 
-    <div class="section">
+    <div class="section" data-tab="cash">
       <h2>Kassa yozuvlari (tahrirlash / o'chirish)</h2>
       <div class="form-row">
         <div class="field" style="max-width:280px;">
@@ -1039,6 +1060,9 @@
         const data = await apiFetch('/admin/users');
         tbody.innerHTML = '';
 
+        const cnt = document.getElementById('tab-count-users');
+        if (cnt) { cnt.textContent = data.users.length; cnt.style.display = ''; }
+
         data.users.forEach((u) => {
           const spotsNames = u.allowed_spots.length
             ? u.allowed_spots.map((id) => {
@@ -1508,6 +1532,29 @@
     });
 
 
+
+    // ---------- Admin panel tablari ----------
+    const ADMIN_TABS = ['users', 'telegram', 'bonus', 'cash', 'poster', 'portion'];
+    function showAdminTab(name, push) {
+      if (!ADMIN_TABS.includes(name)) name = 'users';
+      document.querySelectorAll('[data-tab]').forEach((el) => { el.style.display = el.dataset.tab === name ? '' : 'none'; });
+      document.querySelectorAll('[data-tab-btn]').forEach((b) => {
+        const on = b.dataset.tabBtn === name;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+        if (on && b.scrollIntoView) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      });
+      try { localStorage.setItem('kpi_admin_tab', name); } catch (e) { /* e'tiborsiz */ }
+      if (push && location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
+    }
+    document.querySelectorAll('[data-tab-btn]').forEach((b) => b.addEventListener('click', () => showAdminTab(b.dataset.tabBtn, true)));
+    (function initTabs() {
+      let t = (location.hash || '').replace('#', '');
+      if (!ADMIN_TABS.includes(t)) { try { t = localStorage.getItem('kpi_admin_tab') || ''; } catch (e) { t = ''; } }
+      showAdminTab(t, false);
+      window.addEventListener('hashchange', () => { const h = (location.hash || '').replace('#', ''); if (ADMIN_TABS.includes(h)) showAdminTab(h, false); });
+    })();
+
     // ---------- Telegram avto-hisobotlar ----------
     let arState = { reports: [], groups: [], users: [], log: [] };
     const arEsc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1661,6 +1708,45 @@
       }
     });
 
+
+    // ---------- Ish kuni chegarasi tekshiruvi ----------
+    function fillBoundarySpots() {
+      const sel = document.getElementById('bc-spot');
+      sel.innerHTML = '<option value="">Hammasi</option>' + spotsList.map((x) => `<option value="${x.spot_id}">${arEsc(x.name)}</option>`).join('');
+    }
+    document.getElementById('bc-run-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('bc-run-btn');
+      const out = document.getElementById('bc-out');
+      const date = document.getElementById('bc-date').value;
+      const spot = document.getElementById('bc-spot').value;
+      const q = new URLSearchParams();
+      if (date) q.set('date', date);
+      if (spot) q.set('spot_id', spot);
+      btn.disabled = true;
+      out.style.display = 'block';
+      out.textContent = 'Poster bilan tekshirilmoqda... (10-30 soniya)';
+      try {
+        const r = await apiFetch('/admin/boundary-check?' + q.toString());
+        out.textContent = r.text;
+        document.getElementById('bc-copy-btn').style.display = 'inline-block';
+      } catch (e) {
+        out.textContent = 'Xato: ' + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+    document.getElementById('bc-copy-btn').addEventListener('click', async () => {
+      const text = document.getElementById('bc-out').textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('Nusxalandi');
+      } catch (e) {
+        const r = document.createRange(); r.selectNodeContents(document.getElementById('bc-out'));
+        const sl = window.getSelection(); sl.removeAllRanges(); sl.addRange(r);
+        showToast('Matn belgilandi, Ctrl+C bosing');
+      }
+    });
+
     (async function init() {
       const today = todayStr();
       const monthAgo = new Date();
@@ -1671,9 +1757,11 @@
       document.getElementById('sync-to').value = today;
       document.getElementById('ce-from').value = monthAgoStr;
       document.getElementById('ce-to').value = today;
+      (() => { const y = new Date(Date.now() - 86400000 * 2).toISOString().slice(0, 10); document.getElementById('bc-date').value = y; })();
 
       await loadCashDiffLimit();
       await loadSpotsForForm();
+      fillBoundarySpots();
       await loadBonusConfig();
       await loadPosterChanges();
       await loadAutoReports();
