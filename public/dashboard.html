@@ -117,9 +117,10 @@
       document.getElementById('date_to').value = today;
     }
 
-    async function loadTiersConfig() {
+    async function loadTiersConfig(dateStr) {
       try {
-        const data = await apiFetch('/bonus/tiers');
+        // Tanlangan ish kuniga amal qilgan tarif (o'tgan kunlar uchun o'sha kundagi tarif)
+        const data = await apiFetch('/bonus/tiers' + (dateStr ? '?date=' + encodeURIComponent(dateStr) : ''));
         tiersConfig = data.categories;
       } catch (e) {
         showToast('Pog\'ona jadvalini yuklab bo\'lmadi: ' + e.message, true);
@@ -164,6 +165,8 @@
 
       try {
         const data = await apiFetch('/bonus?' + params.toString());
+        // Bitta kun tanlangan bo'lsa, progress/chek shu kundagi tarif bo'yicha chiziladi
+        if (date_from === date_to) await loadTiersConfig(date_from);
         document.getElementById('rows-count').textContent = data.count;
         renderBonusStatus(data, date_from, date_to);
         renderProgress(data.rows, date_from, date_to, spot_id);

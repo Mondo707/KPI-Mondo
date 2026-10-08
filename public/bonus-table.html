@@ -17,6 +17,10 @@
     <div class="section" style="margin-top:0;">
       <h2 style="margin-top:0;">Bonus jadvali</h2>
       <p class="journal-sub">Har bir kategoriya bo'yicha, qancha sotilsa qanday bonus tegishi ko'rsatilgan. Bu jadval faqat ko'rish uchun.</p>
+      <div class="field" style="max-width:220px; margin-bottom:14px;">
+        <label for="tariff-date">Qaysi sanadagi tarif</label>
+        <input type="date" id="tariff-date">
+      </div>
       <div id="categories-wrap">Yuklanmoqda...</div>
     </div>
   </div>
@@ -32,7 +36,8 @@
     async function loadBonusTable() {
       const wrap = document.getElementById('categories-wrap');
       try {
-        const data = await apiFetch('/bonus/tiers');
+        const dateStr = document.getElementById('tariff-date').value;
+        const data = await apiFetch('/bonus/tiers' + (dateStr ? '?date=' + encodeURIComponent(dateStr) : ''));
         wrap.innerHTML = '';
         const cats = sortByCategoryOrder(Object.keys(data.categories));
         cats.forEach((category) => {
@@ -57,6 +62,8 @@
       }
     }
 
+    document.getElementById('tariff-date').value = todayStr();
+    document.getElementById('tariff-date').addEventListener('change', loadBonusTable);
     loadBonusTable();
   </script>
 <script src="/js/pwa.js"></script>

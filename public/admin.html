@@ -36,7 +36,11 @@
 
     <div class="section">
       <h2>Bonus jadvalini sozlash</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">Qiymatni o'zgartiring, so'ng "Bugundan boshlab saqlash" yoki "Davr bilan qo'llash" tugmasini bosing. Tugmasiz hech narsa o'zgarmaydi.</p>
+      <div id="tariff-recalc-status" style="display:none; margin-bottom:12px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px;"></div>
       <div id="categories-wrap">Yuklanmoqda...</div>
+      <h3 style="margin:22px 0 8px; font-size:14px;">Tarif o'zgarishlari tarixi</h3>
+      <div id="tariff-history"></div>
     </div>
 
     <div class="section" style="border-color: var(--brand-purple);">
@@ -713,72 +717,177 @@
       }
     });
 
+    let tariffPollTimer = null;
+
+    function fmtDateTime(iso) {
+      const d = new Date(iso);
+      return d.toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderTariffHistory(changes) {
+      const el = document.getElementById('tariff-history');
+      if (!changes || !changes.length) {
+        el.innerHTML = '<div style="color:var(--text-dim); font-size:13px;">Tarif hali o\'zgartirilmagan</div>';
+        return;
+      }
+      el.innerHTML = `
+        <table>
+          <thead><tr><th>O'zgartirilgan vaqt</th><th>Kim</th><th>Kategoriya</th><th>Qaysi kunlar uchun</th><th>O'zgarish</th><th>Qayta hisoblangan</th></tr></thead>
+          <tbody>
+            ${changes.map((c) => `
+              <tr>
+                <td>${fmtDateTime(c.created_at)}</td>
+                <td>${c.user_login || '—'}</td>
+                <td>${c.category}</td>
+                <td>${c.effective_to ? `${c.effective_from} — ${c.effective_to}` : `${c.effective_from} dan boshlab`}</td>
+                <td style="max-width:360px;">${c.summary}</td>
+                <td>${c.recalculated_days ? `${c.recalculated_days} kun` : '—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    function renderRecalcStatus(r) {
+      const el = document.getElementById('tariff-recalc-status');
+      if (!r || (!r.running && !r.finishedAt)) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+      if (r.running) {
+        el.innerHTML = `⏳ Qayta hisoblanmoqda: <b>${r.done} / ${r.total}</b> kun (${r.category}). Sahifani yopmasangiz ham bo'ladi.`;
+      } else {
+        el.innerHTML = r.failed
+          ? `⚠️ Qayta hisoblash tugadi: ${r.done - r.failed} / ${r.total} kun muvaffaqiyatli, ${r.failed} kunda xato (${r.lastError || ''}).`
+          : `✅ Qayta hisoblash tugadi: ${r.total} kun yangilandi (${r.category}).`;
+      }
+    }
+
+    function pollRecalc() {
+      if (tariffPollTimer) return;
+      tariffPollTimer = setInterval(async () => {
+        try {
+          const data = await apiFetch('/admin/bonus-config/recalc-status');
+          renderRecalcStatus(data.recalc);
+          if (!data.recalc.running) {
+            clearInterval(tariffPollTimer);
+            tariffPollTimer = null;
+            const full = await apiFetch('/admin/bonus-config');
+            renderTariffHistory(full.changes);
+          }
+        } catch (e) { /* keyingi urinishda */ }
+      }, 2500);
+    }
+
     async function loadBonusConfig() {
       const wrap = document.getElementById('categories-wrap');
       try {
         const data = await apiFetch('/admin/bonus-config');
+        const today = data.today;
         wrap.innerHTML = '';
+        renderTariffHistory(data.changes);
+        renderRecalcStatus(data.recalc);
+        if (data.recalc && data.recalc.running) pollRecalc();
+
         const cats = sortByCategoryOrder(Object.keys(data.categories));
         cats.forEach((category) => {
           const cfg = data.categories[category];
           const row = document.createElement('div');
           row.className = 'category-row';
+          row.dataset.category = category;
           row.innerHTML = `
             <div class="cat-name">${category} <span style="color:var(--text-dim); font-weight:400;">(${cfg.unit === 'kg' ? 'kg' : 'dona'})</span></div>
             <div class="tier-grid">
               ${cfg.tiers.map((t, idx) => `
                 <div class="tier-cell">
                   <div class="range-inputs" style="display:flex; align-items:center; gap:4px; margin-bottom:6px;">
-                    <input type="number" class="tier-min" data-category="${category}" data-tier="${idx}" value="${t.min}" style="width:52px; padding:4px 5px; font-size:12px; text-align:center;">
+                    <input type="number" class="tier-min" data-tier="${idx}" value="${t.min}" style="width:52px; padding:4px 5px; font-size:12px; text-align:center;">
                     <span style="color:var(--text-dim); font-size:12px;">–</span>
                     ${t.max
-                      ? `<input type="number" class="tier-max" data-category="${category}" data-tier="${idx}" value="${t.max}" style="width:52px; padding:4px 5px; font-size:12px; text-align:center;">`
+                      ? `<input type="number" class="tier-max" data-tier="${idx}" value="${t.max}" style="width:52px; padding:4px 5px; font-size:12px; text-align:center;">`
                       : `<input type="text" value="∞" disabled style="width:52px; padding:4px 5px; font-size:12px; text-align:center; opacity:0.5;">`}
                   </div>
                   <div style="font-size:10px; color:var(--text-dim); margin-bottom:6px;">${cfg.unit === 'kg' ? 'kg' : 'dona'}</div>
-                  <input type="number" class="tier-bonus" data-category="${category}" data-tier="${idx}" value="${t.bonus}">
+                  <input type="number" class="tier-bonus" data-tier="${idx}" value="${t.bonus}">
                 </div>
               `).join('')}
             </div>
-            <div class="tier-warning" data-warning-for="${category}" style="display:none; margin-top:8px; font-size:11.5px; color:var(--danger); background:rgba(239,68,68,0.08); border:1px solid var(--danger); border-radius:6px; padding:6px 10px;"></div>
+            <div class="tier-warning" style="display:none; margin-top:8px; font-size:11.5px; color:var(--danger); background:rgba(239,68,68,0.08); border:1px solid var(--danger); border-radius:6px; padding:6px 10px;"></div>
+            <div class="tier-actions" style="display:none; margin-top:10px; padding:10px 12px; border:1px dashed var(--accent-dark); border-radius:8px;">
+              <div style="font-size:12.5px; color:var(--accent); margin-bottom:8px;">⚠ Saqlanmagan o'zgarish bor</div>
+              <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                <button type="button" class="btn-primary save-today" style="width:auto; padding:8px 14px;">💾 Bugundan boshlab saqlash</button>
+                <button type="button" class="btn-secondary open-range" style="width:auto; padding:8px 14px;">📅 Davr bilan qo'llash</button>
+                <button type="button" class="btn-secondary cancel-tier" style="width:auto; padding:8px 14px;">Bekor qilish</button>
+              </div>
+              <div class="range-box" style="display:none; margin-top:10px;">
+                <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;">
+                  <div class="field" style="min-width:150px;"><label>Sanadan</label><input type="date" class="range-from" value="${today}"></div>
+                  <div class="field" style="min-width:150px;"><label>Sanagacha (bo'sh = shundan keyin doim)</label><input type="date" class="range-to"></div>
+                  <button type="button" class="btn-primary apply-range" style="width:auto; padding:8px 14px;">Qo'llash</button>
+                </div>
+                <div style="font-size:11.5px; color:var(--text-dim); margin-top:6px;">Tanlangan o'tgan kunlar yangi tarif bilan qayta hisoblanadi (orqa fonda). Davrdan tashqari kunlar o'zgarmaydi.</div>
+              </div>
+              <div style="font-size:11.5px; color:var(--text-dim); margin-top:8px;">"Bugundan boshlab" — yangi tarif ${today} (bugungi ish kuni) dan amal qiladi, o'tgan kunlar o'zgarmaydi.</div>
+            </div>
           `;
           wrap.appendChild(row);
-        });
 
-        async function saveTierField(input) {
-          const category = input.dataset.category;
-          const tier_index = Number(input.dataset.tier);
-          const row = input.closest('.category-row');
+          const original = JSON.stringify(cfg.tiers);
+          const readTiers = () => cfg.tiers.map((t, idx) => {
+            const min = row.querySelector(`.tier-min[data-tier="${idx}"]`);
+            const max = row.querySelector(`.tier-max[data-tier="${idx}"]`);
+            return {
+              min: Number(min.value),
+              max: max ? Number(max.value) : null,
+              bonus: Number(row.querySelector(`.tier-bonus[data-tier="${idx}"]`).value),
+            };
+          });
+          const actions = row.querySelector('.tier-actions');
+          const rangeBox = row.querySelector('.range-box');
 
-          const bonusInput = row.querySelector(`.tier-bonus[data-tier="${tier_index}"]`);
-          const minInput = row.querySelector(`.tier-min[data-tier="${tier_index}"]`);
-          const maxInput = row.querySelector(`.tier-max[data-tier="${tier_index}"]`);
-
-          const body = { category, tier_index, bonus: Number(bonusInput.value) };
-          if (minInput) body.min = Number(minInput.value);
-          if (maxInput) body.max = Number(maxInput.value);
-
-          try {
-            const result = await apiFetch('/admin/bonus-config', {
-              method: 'PUT',
-              body: JSON.stringify(body),
+          row.querySelectorAll('.tier-bonus, .tier-min, .tier-max').forEach((input) => {
+            input.addEventListener('input', () => {
+              const dirty = JSON.stringify(readTiers()) !== original;
+              actions.style.display = dirty ? 'block' : 'none';
+              if (!dirty) rangeBox.style.display = 'none';
             });
-            showToast(`"${category}" yangilandi`);
+          });
 
-            const warnEl = row.querySelector(`[data-warning-for="${category}"]`);
-            if (result.warnings && result.warnings.length) {
-              warnEl.style.display = 'block';
-              warnEl.innerHTML = '⚠️ ' + result.warnings.join('<br>⚠️ ');
-            } else {
-              warnEl.style.display = 'none';
+          async function save(body, okMessage) {
+            try {
+              const result = await apiFetch('/admin/bonus-config', { method: 'PUT', body: JSON.stringify(body) });
+              const warnEl = row.querySelector('.tier-warning');
+              if (result.warnings && result.warnings.length) {
+                warnEl.style.display = 'block';
+                warnEl.innerHTML = '⚠️ ' + result.warnings.join('<br>⚠️ ');
+              } else {
+                warnEl.style.display = 'none';
+              }
+              showToast(result.changed ? okMessage(result) : "O'zgarish yo'q");
+              await loadBonusConfig();
+              if (result.recalc_days > 1 || (result.recalc_days === 1 && result.from !== today)) pollRecalc();
+            } catch (e) {
+              showToast('Xato: ' + e.message, true);
             }
-          } catch (e) {
-            showToast('Xato: ' + e.message, true);
           }
-        }
 
-        wrap.querySelectorAll('.tier-bonus, .tier-min, .tier-max').forEach((input) => {
-          input.addEventListener('change', () => saveTierField(input));
+          row.querySelector('.save-today').addEventListener('click', () => {
+            save({ category, tiers: readTiers(), apply: 'today' }, () => `"${category}": yangi tarif ${today} dan boshlab saqlandi`);
+          });
+          row.querySelector('.open-range').addEventListener('click', () => {
+            rangeBox.style.display = rangeBox.style.display === 'none' ? 'block' : 'none';
+          });
+          row.querySelector('.cancel-tier').addEventListener('click', () => loadBonusConfig());
+          row.querySelector('.apply-range').addEventListener('click', () => {
+            const from = row.querySelector('.range-from').value;
+            const to = row.querySelector('.range-to').value;
+            if (!from) { showToast('Boshlanish sanasini tanlang', true); return; }
+            if (to && to < from) { showToast('Tugash sanasi boshlanishdan oldin bo\'lishi mumkin emas', true); return; }
+            const text = to
+              ? `"${category}" yangi tarifi ${from} — ${to} kunlari uchun qo'llanadi va bu kunlar qayta hisoblanadi. Davom etasizmi?`
+              : `"${category}" yangi tarifi ${from} dan boshlab doimiy qo'llanadi va o'tgan kunlar qayta hisoblanadi. Davom etasizmi?`;
+            if (!confirm(text)) return;
+            save({ category, tiers: readTiers(), apply: 'range', date_from: from, date_to: to || null },
+              (r) => `"${category}": ${r.recalc_days} kun qayta hisoblanmoqda`);
+          });
         });
       } catch (e) {
         wrap.innerHTML = '<div class="error-msg">Yuklashda xato: ' + e.message + '</div>';
