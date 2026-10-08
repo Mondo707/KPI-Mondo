@@ -264,6 +264,16 @@
     </div>
 
     <div class="section">
+      <h2>Poster o'zgarishlari jurnali</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:0;">Kassa Poster bilan solishtirilgandan keyin Poster'dagi raqam o'zgarsa (masalan chek o'chirilsa), tizim oxirgi 3 kunni har ertalab tekshirib, kunni avtomatik qayta hisoblaydi va bu yerga yozib qo'yadi. Bu jurnal faqat adminga ko'rinadi.</p>
+      <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:12px;">
+        <button class="btn-secondary" id="poster-recheck-btn" style="width:auto; padding:8px 14px;">🔄 Hozir tekshirish (oxirgi 3 kun)</button>
+        <span id="poster-recheck-result" style="font-size:13px; color:var(--text-dim);"></span>
+      </div>
+      <div id="poster-changes-wrap"></div>
+    </div>
+
+    <div class="section">
       <h2>Kassa yozuvlari (tahrirlash / o'chirish)</h2>
       <div class="form-row">
         <div class="field" style="max-width:280px;">
@@ -1367,6 +1377,62 @@
     document.getElementById('cm-spot-select').addEventListener('change', loadClientMapping);
     document.getElementById('ce-load-btn').addEventListener('click', loadCashEntries);
 
+    function renderPosterChanges(changes) {
+      const el = document.getElementById('poster-changes-wrap');
+      if (!changes || !changes.length) {
+        el.innerHTML = '<div style="color:var(--text-dim); font-size:13px;">Hozircha o\'zgarish aniqlanmagan</div>';
+        return;
+      }
+      const statusText = (v) => (v === 1 ? 'berildi' : v === 0 ? 'berilmadi' : '—');
+      el.innerHTML = `
+        <table>
+          <thead><tr><th>Aniqlangan vaqt</th><th>Sana</th><th>Filial</th><th>Eski Poster kassa</th><th>Yangi Poster kassa</th><th>Farq</th><th>Izoh</th><th>Bonus holati</th></tr></thead>
+          <tbody>
+            ${changes.map((c) => {
+              const diff = Math.round(c.new_total - c.old_total);
+              const note = diff < 0 ? 'Chek o\'chirilgan yoki kamaytirilgan bo\'lishi mumkin' : 'Chek qo\'shilgan yoki o\'zgargan bo\'lishi mumkin';
+              const detail = (c.details || []).map((d) => `${d.name}: ${formatMoney(d.old)} → ${formatMoney(d.new)}`).join('<br>');
+              return `<tr>
+                <td>${fmtDateTime(c.detected_at)}</td>
+                <td>${c.date}</td>
+                <td>${spotsById[c.spot_id] || ('#' + c.spot_id)}</td>
+                <td style="text-align:right;">${Math.round(c.old_total).toLocaleString('ru-RU')}</td>
+                <td style="text-align:right;">${Math.round(c.new_total).toLocaleString('ru-RU')}</td>
+                <td style="text-align:right; font-weight:700;">${(diff > 0 ? '+' : '') + diff.toLocaleString('ru-RU')}</td>
+                <td style="max-width:320px;">${note}<div style="font-size:11.5px; color:var(--text-dim); margin-top:3px;">${detail}</div></td>
+                <td>${statusText(c.status_before)} → ${statusText(c.status_after)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    async function loadPosterChanges() {
+      try {
+        const data = await apiFetch('/admin/poster-changes');
+        renderPosterChanges(data.changes);
+      } catch (e) {
+        document.getElementById('poster-changes-wrap').innerHTML = '<div class="error-msg">Yuklashda xato: ' + e.message + '</div>';
+      }
+    }
+
+    document.getElementById('poster-recheck-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('poster-recheck-btn');
+      const out = document.getElementById('poster-recheck-result');
+      btn.disabled = true;
+      out.textContent = 'Poster bilan tekshirilmoqda... (bir necha soniya)';
+      try {
+        const r = await apiFetch('/admin/poster-recheck', { method: 'POST', body: JSON.stringify({ days: 3 }) });
+        out.textContent = `Tekshirildi: ${r.checked} ta yozuv, o'zgargan: ${r.changed}` + (r.errors ? `, xato: ${r.errors}` : '') + (r.suspicious ? `, shubhali (bo'sh javob): ${r.suspicious}` : '');
+        renderPosterChanges(r.changes);
+      } catch (e) {
+        out.textContent = '';
+        showToast('Xato: ' + e.message, true);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
     (async function init() {
       const today = todayStr();
       const monthAgo = new Date();
@@ -1381,6 +1447,7 @@
       await loadCashDiffLimit();
       await loadSpotsForForm();
       await loadBonusConfig();
+      await loadPosterChanges();
       await loadProducts();
       await loadPortionIngredients();
       await loadPosterIngredientsForSelect();
