@@ -492,7 +492,15 @@
 "— → berildi": "— → выдан",
 "— → berilmadi": "— → не выдан",
 "— → —": "— → —",
-"Izoh": "Комментарий"
+"Izoh": "Комментарий",
+"Telegram": "Telegram",
+"Bog'langan": "Привязан",
+"/start kutilmoqda": "ожидается /start",
+"Username saqlandi. Foydalanuvchi botga /start yuborsin.": "Username сохранён. Пользователь должен отправить боту /start.",
+"Telegram bog'lanishi o'chirildi": "Привязка Telegram удалена",
+"Parol kamida 6 belgidan iborat bo'lishi kerak": "Пароль должен содержать не менее 6 символов",
+"Yangi parolni kiriting (kamida 6 belgi):": "Введите новый пароль (не менее 6 символов):",
+"Telegram username noto'g'ri (5-32 belgi: lotin harf, raqam, pastki chiziq; harf bilan boshlanadi)": "Неверный Telegram username (5–32 символа: латинские буквы, цифры, подчёркивание; начинается с буквы)"
 };
   var RULES = [
     [/(\d)\s*so'm\b/g, '$1 сум'],

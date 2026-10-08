@@ -257,7 +257,7 @@
       <h2>Foydalanuvchilar ro'yxati</h2>
       <table>
         <thead>
-          <tr><th>Login</th><th>Parol</th><th>Rol</th><th>Filiallar</th><th>Bo'limlar</th><th>Holat</th><th>Oxirgi kirish</th><th>Yaratilgan</th><th>Amallar</th></tr>
+          <tr><th>Login</th><th>Parol</th><th>Rol</th><th>Filiallar</th><th>Bo'limlar</th><th>Telegram</th><th>Holat</th><th>Oxirgi kirish</th><th>Yaratilgan</th><th>Amallar</th></tr>
         </thead>
         <tbody id="users-body"></tbody>
       </table>
@@ -1012,6 +1012,11 @@
             <td>${u.role}</td>
             <td class="spots-cell">${spotsNames}</td>
             <td>${sectionNames}</td>
+            <td class="tg-cell">${u.telegram_username
+              ? `@${u.telegram_username}<br>${u.telegram_linked
+                  ? '<span class="badge ok">Bog\'langan</span>'
+                  : '<span class="badge bad">/start kutilmoqda</span>'}`
+              : '<span style="color:var(--text-dim);">—</span>'}</td>
             <td>${u.is_active
               ? '<span class="badge ok">Faol</span>'
               : '<span class="badge bad">Faolsiz</span>'}</td>
@@ -1020,6 +1025,7 @@
             <td>
               <button class="action-btn" data-act="edit-spots" data-id="${u.id}">Filiallar</button>
               <button class="action-btn" data-act="edit-sections" data-id="${u.id}">Bo'limlar</button>
+              <button class="action-btn" data-act="edit-telegram" data-id="${u.id}" data-username="${u.telegram_username || ''}">Telegram</button>
               <button class="action-btn" data-act="reset-password" data-id="${u.id}">Parol tiklash</button>
               <button class="action-btn warn" data-act="toggle-active" data-id="${u.id}" data-active="${u.is_active}">
                 ${u.is_active ? "Faolsizlantirish" : 'Faollashtirish'}
@@ -1080,12 +1086,30 @@
         btn.addEventListener('click', () => toggleSectionsEditor(btn.dataset.id));
       });
 
+      document.querySelectorAll('[data-act="edit-telegram"]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.id;
+          const input = prompt('Foydalanuvchining Telegram username\'ini kiriting (masalan @ali_valiyev).\nBo\'sh qoldirsangiz, Telegram bilan bog\'lanish o\'chiriladi.', btn.dataset.username ? '@' + btn.dataset.username : '');
+          if (input === null) return;
+          try {
+            await apiFetch(`/admin/users/${id}/telegram`, {
+              method: 'PUT',
+              body: JSON.stringify({ username: input }),
+            });
+            showToast(input.trim() ? 'Username saqlandi. Foydalanuvchi botga /start yuborsin.' : 'Telegram bog\'lanishi o\'chirildi');
+            await loadUsers();
+          } catch (e) {
+            showToast('Xato: ' + e.message, true);
+          }
+        });
+      });
+
       document.querySelectorAll('[data-act="reset-password"]').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const id = btn.dataset.id;
-          const newPassword = prompt('Yangi parolni kiriting (kamida 4 belgi):');
+          const newPassword = prompt('Yangi parolni kiriting (kamida 6 belgi):');
           if (!newPassword) return;
-          if (newPassword.length < 4) {
+          if (newPassword.length < 6) {
             showToast('Parol juda qisqa', true);
             return;
           }
