@@ -3,7 +3,6 @@
 const { pool } = require('../../db/db');
 const { getComparison } = require('../../services/cashReconcile');
 const { getCurrentBusinessDate } = require('../../services/businessDay');
-const { getSettingNumber } = require('../../services/appSettings');
 const { getAllowedSpots } = require('../spotNames');
 const { renderTablePdf, fmtNum, COLOR } = require('../pdfTable');
 const { t } = require('../strings');
@@ -70,14 +69,13 @@ function statusFor(lang, a, multiDay) {
       main = t(lang, 'k_ok');
     } else if (diff < 0) {
       kind = 'red'; // Fakt > Poster: Posterga urilmagan
-      main = t(lang, 'k_not_posted', { x: fmtNum(Math.abs(diff)) });
+      main = t(lang, 'k_not_posted');
     } else {
       kind = 'yellow'; // Fakt < Poster: kassa kam topshirilgan
-      main = t(lang, 'k_less', { x: fmtNum(diff) });
+      main = t(lang, 'k_less');
     }
   }
   parts.push(main);
-  if (a.computed > 0 && a.over > 0) parts.push(multiDay ? t(lang, 'k_over_n', { n: a.over }) : t(lang, 'k_over'));
   if (multiDay && a.entries > 0) {
     if (a.missing > 0) parts.push(t(lang, 'k_missing_n', { n: a.missing }));
     if (a.computed > 0 && a.waiting > 0) parts.push(t(lang, 'k_waiting_n', { n: a.waiting }));
@@ -93,7 +91,6 @@ async function build({ user, spotIds, from, to, lang, hideAmounts }) {
 
   const { agg, dates } = await collect({ user, spotIds: chosen.map((s) => s.id), from, to });
   const multiDay = dates.length > 1;
-  const limitPct = await getSettingNumber('cash_diff_limit_percent', Number(process.env.CASH_DIFF_LIMIT_PERCENT || 0.3));
 
   const rows = [];
   let tFakt = 0;
@@ -167,7 +164,7 @@ async function build({ user, spotIds, from, to, lang, hideAmounts }) {
     ],
     rows,
     totalRow,
-    footerNote: t(lang, 'k_note', { limit: limitPct }),
+    footerNote: t(lang, 'k_note'),
     fontSize: 9,
   });
 
