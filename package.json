@@ -13,6 +13,7 @@
     "seed:admin": "node src/scripts/seedAdmin.js"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.65",
     "axios": "^1.19.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.6",
