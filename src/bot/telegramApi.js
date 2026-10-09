@@ -23,10 +23,11 @@ async function call(method, params = {}) {
   return data.result;
 }
 
-async function sendDocument(chatId, buffer, filename, caption) {
+async function sendDocument(chatId, buffer, filename, caption, markup) {
   const form = new FormData();
   form.append('chat_id', String(chatId));
   if (caption) form.append('caption', caption);
+  if (markup) form.append('reply_markup', JSON.stringify(markup));
   form.append('document', new Blob([buffer], { type: 'application/pdf' }), filename);
   const res = await fetch(`${API_BASE()}/bot${TOKEN()}/sendDocument`, { method: 'POST', body: form });
   let data;
@@ -39,10 +40,11 @@ async function sendDocument(chatId, buffer, filename, caption) {
 
 // Rasm sifatida yuboradi (chatda to'g'ridan-to'g'ri ko'rinadi). Telegram juda katta rasmni siqadi,
 // shuning uchun imageTable.js rasm balandligini 2400 pikseldan oshirmaydi.
-async function sendPhoto(chatId, buffer, caption) {
+async function sendPhoto(chatId, buffer, caption, markup) {
   const form = new FormData();
   form.append('chat_id', String(chatId));
   if (caption) form.append('caption', caption);
+  if (markup) form.append('reply_markup', JSON.stringify(markup));
   form.append('photo', new Blob([buffer], { type: 'image/png' }), 'report.png');
   const res = await fetch(`${API_BASE()}/bot${TOKEN()}/sendPhoto`, { method: 'POST', body: form });
   let data;

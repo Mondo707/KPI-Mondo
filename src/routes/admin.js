@@ -618,6 +618,13 @@ router.delete('/portion-entries/:id', async (req, res) => {
 const autoReports = require('../bot/autoReports');
 const botTg = require('../bot/telegramApi');
 
+// Yangi/tahrirlangan hisobotning vaqti bugun uchun allaqachon o'tgan bo'lsa, bugun avtomatik yuborilmasin
+// (aks holda "kechikib yuborish" qoidasi uni darrov yuborib yuboradi). Birinchi yuborish ertaga.
+function passedToday(sendTime) {
+  const now = autoReports.tashkentNow();
+  return autoReports.timeToMinutes(sendTime) <= now.minutes;
+}
+
 function validateAutoReport(b) {
   const name = String(b.name || '').trim();
   if (!name || name.length > 80) return { error: 'Nom kerak (80 belgigacha)' };
@@ -661,9 +668,9 @@ router.post('/auto-reports', async (req, res) => {
   if (v.error) return res.status(400).json({ error: v.error });
   const x = v.value;
   const r = await pool.query(
-    `INSERT INTO auto_reports (name, report_key, send_time, period, lang, spot_ids, user_ids, group_ids, category_names, enabled, created_by, hide_amounts, output_format)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
-    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), JSON.stringify(x.category_names), x.enabled, req.user.login, x.hide_amounts, x.output_format]
+    `INSERT INTO auto_reports (name, report_key, send_time, period, lang, spot_ids, user_ids, group_ids, category_names, enabled, created_by, hide_amounts, output_format, last_sent_date)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
+    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), JSON.stringify(x.category_names), x.enabled, req.user.login, x.hide_amounts, x.output_format, passedToday(x.send_time) ? autoReports.tashkentNow().date : null]
   );
   res.json({ ok: true, id: r.rows[0].id });
 });
@@ -672,10 +679,15 @@ router.put('/auto-reports/:id', async (req, res) => {
   const v = validateAutoReport(req.body || {});
   if (v.error) return res.status(400).json({ error: v.error });
   const x = v.value;
+  const old = (await pool.query('SELECT send_time, enabled, last_sent_date FROM auto_reports WHERE id = $1', [req.params.id])).rows[0];
+  if (!old) return res.status(404).json({ error: 'Avto-hisobot topilmadi' });
+  // vaqt o'zgargan yoki qayta yoqilgan bo'lsa: o'tib ketgan vaqt -> bugun yuborilmaydi; hali kelmagan vaqt -> bugun yuboriladi
+  let lastSent = old.last_sent_date;
+  if (old.send_time !== x.send_time || (!old.enabled && x.enabled)) lastSent = passedToday(x.send_time) ? autoReports.tashkentNow().date : null;
   const r = await pool.query(
-    `UPDATE auto_reports SET name=$1, report_key=$2, send_time=$3, period=$4, lang=$5, spot_ids=$6, user_ids=$7, group_ids=$8, category_names=$9, enabled=$10, hide_amounts=$11, output_format=$12
-     WHERE id=$13`,
-    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), JSON.stringify(x.category_names), x.enabled, x.hide_amounts, x.output_format, req.params.id]
+    `UPDATE auto_reports SET name=$1, report_key=$2, send_time=$3, period=$4, lang=$5, spot_ids=$6, user_ids=$7, group_ids=$8, category_names=$9, enabled=$10, hide_amounts=$11, output_format=$12, last_sent_date=$13
+     WHERE id=$14`,
+    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), JSON.stringify(x.category_names), x.enabled, x.hide_amounts, x.output_format, lastSent, req.params.id]
   );
   if (!r.rowCount) return res.status(404).json({ error: 'Avto-hisobot topilmadi' });
   res.json({ ok: true });

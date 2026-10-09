@@ -8,6 +8,7 @@ const kassaFarqi = require('./reports/kassaFarqi');
 const kpiBonus = require('./reports/kpiBonus');
 const kunlikSavdo = require('./reports/kunlikSavdo');
 const kassaEslatma = require('./reports/kassaEslatma');
+const { renderTableImages } = require('./imageTable');
 const { getCurrentBusinessDate } = require('../services/businessDay');
 
 const DEFAULT_SECTIONS = ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history', 'portsiya'];
@@ -17,7 +18,7 @@ const REPORTS = {
   k: { section: 'cash', btn: 'btn_report_kassa', title: 'btn_report_kassa', build: kassaFarqi.build },
   p: { section: 'kpi', btn: 'btn_report_kpi', title: 'btn_report_kpi', build: kpiBonus.build },
   m: { section: 'cash', auto_only: true, build: kassaEslatma.build }, // faqat avto-hisobotda (matnli eslatma)
-  s: { section: 'daily_sales', btn: 'btn_report_sales', title: 'btn_report_sales', build: kunlikSavdo.build, cats: true },
+  s: { section: 'daily_sales', btn: 'btn_report_sales', title: 'btn_report_sales', build: kunlikSavdo.build, cats: true, today: true },
 };
 
 const states = new Map(); // telegram_id -> { report, from, to, spots:Set, awaiting }
@@ -70,13 +71,20 @@ async function edit(chatId, messageId, text, markup, parseMode = 'Markdown') {
 
 // ---------- ekranlar ----------
 function menuScreen(user) {
+  const L = user.lang;
   const rows = [];
   for (const key of Object.keys(REPORTS)) {
-    if (!REPORTS[key].auto_only && canSee(user, key)) rows.push([{ text: t(user.lang, REPORTS[key].btn), callback_data: `r:${key}` }]);
+    if (!REPORTS[key].auto_only && canSee(user, key)) {
+      rows.push([
+        { text: t(L, `btn_short_${key}`), callback_data: `r:${key}` },
+        { text: t(L, 'btn_quick'), callback_data: `q:${key}` },
+      ]);
+    }
   }
-  rows.push([{ text: t(user.lang, 'btn_lang'), callback_data: 'l' }]);
+  const hasReports = rows.length > 0;
+  rows.push([{ text: t(L, 'btn_lang'), callback_data: 'l' }]);
   return {
-    text: rows.length > 1 ? t(user.lang, 'menu_title') : `${t(user.lang, 'menu_title')}\n\n${t(user.lang, 'menu_empty')}`,
+    text: hasReports ? t(L, 'menu_title') : `${t(L, 'menu_title')}\n\n${t(L, 'menu_empty')}`,
     markup: { inline_keyboard: rows },
   };
 }
@@ -84,41 +92,54 @@ function menuScreen(user) {
 function periodScreen(user, reportKey) {
   const L = user.lang;
   const b = (k, d) => ({ text: t(L, k), callback_data: `p:${d}` });
+  // Kassa farqi va KPI/Bonus uchun «Bugun» yo'q: bugungi kun hali hisoblanmaydi
+  const withToday = REPORTS[reportKey].today === true;
+  const rows = withToday
+    ? [
+      [b('p_yesterday', 'yesterday'), b('p_today', 'today')],
+      [b('p_last7', 'last7'), b('p_month', 'month')],
+      [b('p_prevmonth', 'prevmonth'), b('p_custom', 'custom')],
+    ]
+    : [
+      [b('p_yesterday', 'yesterday'), b('p_last7', 'last7')],
+      [b('p_month', 'month'), b('p_prevmonth', 'prevmonth')],
+      [b('p_custom', 'custom')],
+    ];
+  rows.push([{ text: t(L, 'btn_back'), callback_data: 'b:m' }]);
   return {
     text: t(L, 'pick_period', { report: t(L, REPORTS[reportKey].title) }),
-    markup: {
-      inline_keyboard: [
-        [b('p_yesterday', 'yesterday'), b('p_today', 'today')],
-        [b('p_last7', 'last7')],
-        [b('p_month', 'month'), b('p_prevmonth', 'prevmonth')],
-        [b('p_custom', 'custom')],
-        [{ text: t(L, 'btn_back'), callback_data: 'b:m' }],
-      ],
-    },
+    markup: { inline_keyboard: rows },
   };
 }
 
 async function spotsScreen(user, st) {
   const L = user.lang;
   const spots = await getAllowedSpots(user);
+  const single = spots.length === 1; // bitta filial: tanlash bosqichi o'tkazib yuboriladi
+  if (single) st.spots.add(spots[0].id);
   const rows = [];
-  for (let i = 0; i < spots.length; i += 2) {
-    rows.push(spots.slice(i, i + 2).map((s) => ({
-      text: `${st.spots.has(s.id) ? '✅' : '▫️'} ${s.name}`,
-      callback_data: `s:${s.id}`,
-    })));
+  if (!single) {
+    for (let i = 0; i < spots.length; i += 2) {
+      rows.push(spots.slice(i, i + 2).map((s) => ({
+        text: `${st.spots.has(s.id) ? '✅' : '▫️'} ${s.name}`,
+        callback_data: `s:${s.id}`,
+      })));
+    }
+    rows.unshift([{ text: t(L, 'btn_all'), callback_data: 's:all' }, { text: t(L, 'btn_clear'), callback_data: 's:none' }]);
   }
-  rows.push([{ text: t(L, 'btn_all'), callback_data: 's:all' }, { text: t(L, 'btn_clear'), callback_data: 's:none' }]);
   if (REPORTS[st.report].cats) {
     const all = await kunlikSavdo.listCategories(getCurrentBusinessDate());
     const n = st.catsSel ? st.catsSel.size : all.length;
     rows.push([{ text: t(L, 'btn_cats', { n, m: all.length }), callback_data: 'c:menu' }]);
   }
-  rows.push([{ text: t(L, 'btn_make'), callback_data: 'g' }]);
+  rows.push([{ text: t(L, 'btn_pdf'), callback_data: 'g:pdf' }, { text: t(L, 'btn_img'), callback_data: 'g:img' }]);
   rows.push([{ text: t(L, 'btn_back'), callback_data: 'b:p' }, { text: t(L, 'btn_menu'), callback_data: 'b:m' }]);
   const period = st.from === st.to ? fmtDate(st.from) : `${fmtDate(st.from)} – ${fmtDate(st.to)}`;
+  const report = t(L, REPORTS[st.report].title);
   return {
-    text: t(L, 'pick_spots', { report: t(L, REPORTS[st.report].title), period, n: st.spots.size }),
+    text: single
+      ? t(L, 'pick_one', { report, period, spot: spots[0].name })
+      : t(L, 'pick_spots', { report, period, n: st.spots.size }),
     markup: { inline_keyboard: rows },
     spots,
   };
@@ -289,6 +310,28 @@ async function onCallback(cb) {
     return edit(chatId, mid, s.text, s.markup);
   }
 
+  // ⚡ Kecha: davr = kecha, filiallar = hammasi (ruxsat etilganlar), keyin faqat format tanlanadi
+  if (data.startsWith('q:')) {
+    const key = data.slice(2);
+    if (!canSee(user, key) || REPORTS[key].auto_only) { await answer(t(L, 'no_access')); return; }
+    const range = presetRange('yesterday');
+    const allowed = await getAllowedSpots(user);
+    setState(from.id, { report: key, from: range.from, to: range.to, spots: new Set(allowed.map((s) => s.id)), catsSel: null, awaiting: null });
+    await answer();
+    const s = await spotsScreen(user, getState(from.id));
+    return edit(chatId, mid, s.text, s.markup);
+  }
+
+  // Hisobotdan keyingi «Boshqa davr»: yangi xabar sifatida davr tanlash ekrani
+  if (data.startsWith('a:')) {
+    const key = data.slice(2);
+    await answer();
+    if (!canSee(user, key) || !REPORTS[key] || REPORTS[key].auto_only) { const m = menuScreen(user); return send(chatId, m.text, { parse_mode: 'Markdown', reply_markup: m.markup }); }
+    setState(from.id, { report: key, from: null, to: null, spots: new Set(), catsSel: null, awaiting: null });
+    const s = periodScreen(user, key);
+    return send(chatId, s.text, { parse_mode: 'Markdown', reply_markup: s.markup });
+  }
+
   const st = getState(from.id);
   if (!st || !st.report) { await answer(t(L, 'expired')); return showMenu(); }
   if (!canSee(user, st.report)) { await answer(t(L, 'no_access')); return showMenu(); }
@@ -360,24 +403,40 @@ async function onCallback(cb) {
     return edit(chatId, mid, s.text, s.markup);
   }
 
-  if (data === 'g') {
+  if (data === 'g' || data === 'g:pdf' || data === 'g:img') {
+    const asImage = data === 'g:img';
     if (!st.from) { await answer(t(L, 'expired')); return showMenu(); }
     if (!st.spots.size) { await answer(t(L, 'no_spots_chosen')); return; }
     if (REPORTS[st.report].cats && st.catsSel && st.catsSel.size === 0) { await answer(t(L, 'no_cats_chosen')); return; }
     if (busy.has(from.id)) { await answer(t(L, 'busy')); return; }
     busy.add(from.id);
     await answer(t(L, 'generating'));
+    let progress = null;
     try {
-      await tg.call('sendChatAction', { chat_id: chatId, action: 'upload_document' }).catch(() => {});
+      progress = await send(chatId, t(L, 'generating')).catch(() => null);
+      await tg.call('sendChatAction', { chat_id: chatId, action: asImage ? 'upload_photo' : 'upload_document' }).catch(() => {});
       const out = await REPORTS[st.report].build({
         user, spotIds: Array.from(st.spots), from: st.from, to: st.to, lang: L,
         categories: REPORTS[st.report].cats && st.catsSel ? Array.from(st.catsSel) : undefined,
       });
-      await tg.sendDocument(chatId, out.pdf, out.filename, out.caption);
+      const after = { inline_keyboard: [[
+        { text: t(L, 'btn_again'), callback_data: `a:${st.report}` },
+        { text: t(L, 'btn_menu'), callback_data: 'b:m' },
+      ]] };
+      if (asImage) {
+        const imgs = renderTableImages(out.pdf.spec);
+        for (let i = 0; i < imgs.length; i++) {
+          const last = i === imgs.length - 1;
+          await tg.sendPhoto(chatId, imgs[i], i === 0 ? out.caption.replace('📄', '🖼') : undefined, last ? after : undefined);
+        }
+      } else {
+        await tg.sendDocument(chatId, out.pdf, out.filename, out.caption, after);
+      }
     } catch (e) {
       console.error('[bot] hisobot yaratishda xato:', e.message);
       await send(chatId, t(L, 'gen_error', { msg: e.message }));
     } finally {
+      if (progress && progress.message_id) tg.call('deleteMessage', { chat_id: chatId, message_id: progress.message_id }).catch(() => {});
       busy.delete(from.id);
     }
     return;

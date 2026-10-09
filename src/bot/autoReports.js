@@ -92,7 +92,8 @@ async function runReport(rep, opts = {}) {
   }
 
   // --- shaxsiy chatlar ---
-  let userIds = rep.user_ids;
+  const sentChats = new Set(); // bir yuborishda bitta chatga ikki marta bormasligi uchun
+  let userIds = Array.from(new Set(rep.user_ids));
   if (opts.onlyUserId) userIds = [opts.onlyUserId];
   for (const uid of userIds) {
     const r = await pool.query('SELECT * FROM users WHERE id = $1', [uid]);
@@ -101,6 +102,7 @@ async function runReport(rep, opts = {}) {
     if (!row) { summary.skipped++; await writeLog(rep, 'user', label, 'o\'tkazildi', 'Foydalanuvchi topilmadi', manual); continue; }
     if (!row.is_active) { summary.skipped++; await writeLog(rep, 'user', label, 'o\'tkazildi', 'Foydalanuvchi faolsiz', manual); continue; }
     if (!row.telegram_id) { summary.skipped++; await writeLog(rep, 'user', label, 'o\'tkazildi', 'Telegram bog\'lanmagan (/start kerak)', manual); continue; }
+    if (sentChats.has(String(row.telegram_id))) { summary.skipped++; await writeLog(rep, 'user', label, 'o\'tkazildi', 'Bu chatga allaqachon yuborilgan', manual); continue; }
     const user = toUser(row);
     if (!canSee(user, rep.report_key)) { summary.skipped++; await writeLog(rep, 'user', label, 'o\'tkazildi', 'Bu hisobotga huquqi yo\'q', manual); continue; }
     try {
@@ -110,6 +112,7 @@ async function runReport(rep, opts = {}) {
       const { key, out } = await buildFor(user, spotIds, user.lang);
       if (out.skip) { summary.skipped++; await writeLog(rep, 'user', label, 'o\'tkazildi', 'Hamma filial kassa kiritgan — yuborilmadi', manual); continue; }
       await deliver(row.telegram_id, key, out);
+      sentChats.add(String(row.telegram_id));
       summary.ok++;
       await writeLog(rep, 'user', label, 'yuborildi', null, manual);
     } catch (e) {
@@ -120,11 +123,12 @@ async function runReport(rep, opts = {}) {
 
   // --- guruhlar ---
   if (!opts.onlyUserId) {
-    for (const gid of rep.group_ids) {
+    for (const gid of Array.from(new Set(rep.group_ids))) {
       const r = await pool.query('SELECT * FROM bot_groups WHERE chat_id = $1', [gid]);
       const g = r.rows[0];
       const label = g ? `${g.title || gid} (guruh)` : `#${gid} (guruh)`;
       if (!g || !g.is_active) { summary.skipped++; await writeLog(rep, 'group', label, 'o\'tkazildi', 'Guruh ulanmagan yoki bot chiqarib yuborilgan', manual); continue; }
+      if (sentChats.has(String(g.chat_id))) { summary.skipped++; await writeLog(rep, 'group', label, 'o\'tkazildi', 'Bu chatga allaqachon yuborilgan', manual); continue; }
       try {
         const pseudo = { id: 0, login: 'guruh', role: 'viewer', allowed_spots: [], allowed_sections: ['cash', 'kpi', 'daily_sales'], lang: rep.lang };
         let spotIds = rep.spot_ids;
@@ -132,6 +136,7 @@ async function runReport(rep, opts = {}) {
         const { key, out } = await buildFor(pseudo, spotIds, rep.lang);
         if (out.skip) { summary.skipped++; await writeLog(rep, 'group', label, 'o\'tkazildi', 'Hamma filial kassa kiritgan — yuborilmadi', manual); continue; }
         await deliver(g.chat_id, key, out);
+        sentChats.add(String(g.chat_id));
         summary.ok++;
         await writeLog(rep, 'group', label, 'yuborildi', null, manual);
       } catch (e) {
@@ -176,4 +181,4 @@ function startAutoReports() {
   console.log('[auto-report] Avto-hisobotlar rejalashtiruvchisi yoqildi (har daqiqada tekshiradi).');
 }
 
-module.exports = { startAutoReports, runReport, toDto, tick, PERIODS, parseArr };
+module.exports = { startAutoReports, runReport, toDto, tick, PERIODS, parseArr, tashkentNow, timeToMinutes };
