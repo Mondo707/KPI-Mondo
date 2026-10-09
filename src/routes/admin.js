@@ -632,6 +632,8 @@ function validateAutoReport(b) {
       spot_ids: ints(b.spot_ids), user_ids: ints(b.user_ids), group_ids: ints(b.group_ids),
       category_names: Array.isArray(b.category_names) ? b.category_names.map(String).slice(0, 40) : [],
       enabled: b.enabled === false || b.enabled === 0 ? 0 : 1,
+      hide_amounts: b.report_key === 'k' && (b.hide_amounts === true || b.hide_amounts === 1) ? 1 : 0,
+      output_format: ['pdf', 'image', 'both'].includes(b.output_format) ? b.output_format : 'pdf',
     },
   };
 }
@@ -659,9 +661,9 @@ router.post('/auto-reports', async (req, res) => {
   if (v.error) return res.status(400).json({ error: v.error });
   const x = v.value;
   const r = await pool.query(
-    `INSERT INTO auto_reports (name, report_key, send_time, period, lang, spot_ids, user_ids, group_ids, category_names, enabled, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), JSON.stringify(x.category_names), x.enabled, req.user.login]
+    `INSERT INTO auto_reports (name, report_key, send_time, period, lang, spot_ids, user_ids, group_ids, category_names, enabled, created_by, hide_amounts, output_format)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), JSON.stringify(x.category_names), x.enabled, req.user.login, x.hide_amounts, x.output_format]
   );
   res.json({ ok: true, id: r.rows[0].id });
 });
@@ -671,9 +673,9 @@ router.put('/auto-reports/:id', async (req, res) => {
   if (v.error) return res.status(400).json({ error: v.error });
   const x = v.value;
   const r = await pool.query(
-    `UPDATE auto_reports SET name=$1, report_key=$2, send_time=$3, period=$4, lang=$5, spot_ids=$6, user_ids=$7, group_ids=$8, category_names=$9, enabled=$10
-     WHERE id=$11`,
-    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), JSON.stringify(x.category_names), x.enabled, req.params.id]
+    `UPDATE auto_reports SET name=$1, report_key=$2, send_time=$3, period=$4, lang=$5, spot_ids=$6, user_ids=$7, group_ids=$8, category_names=$9, enabled=$10, hide_amounts=$11, output_format=$12
+     WHERE id=$13`,
+    [x.name, x.report_key, x.send_time, x.period, x.lang, JSON.stringify(x.spot_ids), JSON.stringify(x.user_ids), JSON.stringify(x.group_ids), JSON.stringify(x.category_names), x.enabled, x.hide_amounts, x.output_format, req.params.id]
   );
   if (!r.rowCount) return res.status(404).json({ error: 'Avto-hisobot topilmadi' });
   res.json({ ok: true });

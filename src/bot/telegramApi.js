@@ -37,4 +37,20 @@ async function sendDocument(chatId, buffer, filename, caption) {
   return data.result;
 }
 
-module.exports = { call, sendDocument, enabled };
+// Rasm sifatida yuboradi (chatda to'g'ridan-to'g'ri ko'rinadi). Telegram juda katta rasmni siqadi,
+// shuning uchun imageTable.js rasm balandligini 2400 pikseldan oshirmaydi.
+async function sendPhoto(chatId, buffer, caption) {
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  if (caption) form.append('caption', caption);
+  form.append('photo', new Blob([buffer], { type: 'image/png' }), 'report.png');
+  const res = await fetch(`${API_BASE()}/bot${TOKEN()}/sendPhoto`, { method: 'POST', body: form });
+  let data;
+  try { data = await res.json(); } catch (e) { data = null; }
+  if (!data || !data.ok) {
+    throw new Error(`Telegram sendPhoto: ${data && data.description ? data.description : 'HTTP ' + res.status}`);
+  }
+  return data.result;
+}
+
+module.exports = { call, sendDocument, sendPhoto, enabled };

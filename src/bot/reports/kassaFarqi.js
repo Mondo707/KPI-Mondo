@@ -85,7 +85,7 @@ function statusFor(lang, a, multiDay) {
   return { kind, text: parts.join(' · ') };
 }
 
-async function build({ user, spotIds, from, to, lang }) {
+async function build({ user, spotIds, from, to, lang, hideAmounts }) {
   const allowed = await getAllowedSpots(user);
   const allowedIds = new Set(allowed.map((s) => s.id));
   const chosen = allowed.filter((s) => spotIds.includes(s.id) && allowedIds.has(s.id));
@@ -121,11 +121,19 @@ async function build({ user, spotIds, from, to, lang }) {
       if (st.kind === 'red') { colors[3] = COLOR.redText; colors[5] = COLOR.redText; bold[3] = true; bold[5] = true; }
       if (st.kind === 'yellow') { bold[3] = true; bold[5] = true; }
     }
+    if (hideAmounts) {
+      // Faqat Filial | Farq | Holat/Izoh ustunlari qoladi (Fakt, Poster, Farq % olib tashlanadi)
+      const pick = (arr) => [arr[0], arr[3], arr[5]];
+      rows.push({ cells: pick(cells), fills: pick(fills), colors: pick(colors), bold: pick(bold) });
+      continue;
+    }
     rows.push({ cells, fills, colors, bold });
   }
 
   const tDiff = tPoster - tFakt;
-  const totalRow = {
+  const totalRow = hideAmounts ? {
+    cells: [t(lang, 'k_total'), anyComputed ? fmtNum(tDiff) : '—', ''],
+  } : {
     cells: [
       t(lang, 'k_total'),
       anyComputed ? fmtNum(tFakt) : '—',
@@ -145,7 +153,11 @@ async function build({ user, spotIds, from, to, lang }) {
   const pdf = await renderTablePdf({
     title: t(lang, 'k_title'),
     subtitle,
-    columns: [
+    columns: hideAmounts ? [
+      { title: t(lang, 'k_col_spot'), width: 30, align: 'left' },
+      { title: t(lang, 'k_col_diff'), width: 22, align: 'right' },
+      { title: t(lang, 'k_col_status'), width: 48, align: 'left' },
+    ] : [
       { title: t(lang, 'k_col_spot'), width: 16, align: 'left' },
       { title: t(lang, 'k_col_fakt'), width: 14, align: 'right' },
       { title: t(lang, 'k_col_poster'), width: 14, align: 'right' },

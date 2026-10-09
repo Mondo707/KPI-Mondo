@@ -6,6 +6,7 @@ const { getAllowedSpots, getSpots } = require('./spotNames');
 const { presetRange } = require('./dates');
 const { toUser, canSee, REPORTS } = require('./botService');
 const { computePendingComparisons } = require('../services/cashReconcile');
+const { renderTableImages } = require('./imageTable');
 
 const CATCHUP_MINUTES = 360; // server uxlab qolgan bo'lsa, belgilangan vaqtdan keyin 6 soatgacha yuboriladi
 const PERIODS = ['yesterday', 'last7', 'month'];
@@ -18,6 +19,7 @@ function toDto(r) {
     id: r.id, name: r.name, report_key: r.report_key, send_time: r.send_time, period: r.period, lang: r.lang,
     spot_ids: parseArr(r.spot_ids).map(Number), user_ids: parseArr(r.user_ids).map(Number),
     group_ids: parseArr(r.group_ids).map(Number), category_names: parseArr(r.category_names).map(String),
+    hide_amounts: !!r.hide_amounts, output_format: r.output_format || 'pdf',
     enabled: !!r.enabled, last_sent_date: r.last_sent_date,
   };
 }
@@ -63,14 +65,29 @@ async function runReport(rep, opts = {}) {
   // Hisoblanmagan kunlar bo'lsa, avval hisoblab olamiz (hisobot to'liq chiqishi uchun)
   try { await computePendingComparisons(20); } catch (e) { console.error('[auto-report] oldindan hisoblashda xato:', e.message); }
 
-  const cache = new Map(); // (til|rol|filiallar) -> PDF
+  const cache = new Map(); // (til|rol|filiallar|savdosiz) -> PDF
+  const imgCache = new Map();
+  const hideAll = rep.report_key === 'k' && !!rep.hide_amounts;
   async function buildFor(user, spotIds, lang) {
     const cats = def.cats && rep.category_names.length ? rep.category_names : undefined;
     const key = `${lang}|${user.role === 'admin' ? 'a' : 'v'}|${spotIds.slice().sort((a, b) => a - b).join(',')}`;
     if (!cache.has(key)) {
-      cache.set(key, await def.build({ user, spotIds, from: range.from, to: range.to, lang, categories: cats }));
+      cache.set(key, await def.build({ user, spotIds, from: range.from, to: range.to, lang, categories: cats, hideAmounts: hideAll }));
     }
-    return cache.get(key);
+    return { key, out: cache.get(key) };
+  }
+  // Tanlangan formatga qarab PDF va/yoki rasm(lar) yuboradi
+  async function deliver(chatId, key, out) {
+    const fmt = rep.output_format || 'pdf';
+    if (fmt === 'pdf' || fmt === 'both') await tg.sendDocument(chatId, out.pdf, out.filename, out.caption);
+    if (fmt === 'image' || fmt === 'both') {
+      if (!imgCache.has(key)) imgCache.set(key, renderTableImages(out.pdf.spec));
+      const imgs = imgCache.get(key);
+      for (let i = 0; i < imgs.length; i++) {
+        const cap = i === 0 && fmt === 'image' ? out.caption.replace('📄', '🖼') : undefined;
+        await tg.sendPhoto(chatId, imgs[i], cap);
+      }
+    }
   }
 
   // --- shaxsiy chatlar ---
@@ -89,8 +106,8 @@ async function runReport(rep, opts = {}) {
       const allowed = (await getAllowedSpots(user)).map((s) => s.id);
       const spotIds = rep.spot_ids.length ? allowed.filter((id) => rep.spot_ids.includes(id)) : allowed;
       if (!spotIds.length) { summary.skipped++; await writeLog(rep, 'user', label, 'o\'tkazildi', 'Ruxsat etilgan filial yo\'q', manual); continue; }
-      const out = await buildFor(user, spotIds, user.lang);
-      await tg.sendDocument(row.telegram_id, out.pdf, out.filename, out.caption);
+      const { key, out } = await buildFor(user, spotIds, user.lang);
+      await deliver(row.telegram_id, key, out);
       summary.ok++;
       await writeLog(rep, 'user', label, 'yuborildi', null, manual);
     } catch (e) {
@@ -110,8 +127,8 @@ async function runReport(rep, opts = {}) {
         const pseudo = { id: 0, login: 'guruh', role: 'viewer', allowed_spots: [], allowed_sections: ['cash', 'kpi', 'daily_sales'], lang: rep.lang };
         let spotIds = rep.spot_ids;
         if (!spotIds.length) spotIds = (await getSpots()).map((s) => Number(s.spot_id));
-        const out = await buildFor(pseudo, spotIds, rep.lang);
-        await tg.sendDocument(g.chat_id, out.pdf, out.filename, out.caption);
+        const { key, out } = await buildFor(pseudo, spotIds, rep.lang);
+        await deliver(g.chat_id, key, out);
         summary.ok++;
         await writeLog(rep, 'group', label, 'yuborildi', null, manual);
       } catch (e) {

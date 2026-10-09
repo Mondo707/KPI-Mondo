@@ -249,6 +249,8 @@ async function init() {
   // Faqat hali DATE bo'lsa ishlaydi - qayta ishga tushirganda hech narsa o'zgarmaydi.
   await pool.query(`
     ALTER TABLE auto_reports ADD COLUMN IF NOT EXISTS category_names TEXT NOT NULL DEFAULT '[]';
+    ALTER TABLE auto_reports ADD COLUMN IF NOT EXISTS hide_amounts INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE auto_reports ADD COLUMN IF NOT EXISTS output_format TEXT NOT NULL DEFAULT 'pdf';
 
     CREATE UNIQUE INDEX IF NOT EXISTS users_telegram_id_uq ON users (telegram_id) WHERE telegram_id IS NOT NULL;
 

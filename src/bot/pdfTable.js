@@ -50,7 +50,7 @@ function renderTablePdf(o) {
     const chunks = [];
     doc.on('data', (c) => chunks.push(c));
     let pageCount = 1;
-    doc.on('end', () => { const b = Buffer.concat(chunks); b.pages = pageCount; resolve(b); });
+    doc.on('end', () => { const b = Buffer.concat(chunks); b.pages = pageCount; b.spec = o; resolve(b); });
     doc.on('error', reject);
 
     doc.registerFont('R', FONT_REGULAR);
