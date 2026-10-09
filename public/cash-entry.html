@@ -27,6 +27,8 @@
       <button class="btn-primary apply-btn" id="load-btn" style="max-width:160px;">Ma'lumotni yuklash</button>
     </div>
 
+    <div id="missing-box" class="note" style="display:none; margin-top:12px; padding:10px 14px; background:var(--card); border:1px solid #e0a800; border-left-width:4px; border-radius:10px;"></div>
+
     <div class="section">
       <h3 style="margin:0 0 4px;">Rasxodlar</h3>
       <p class="journal-sub">Kunlik xarajatlar (masalan yetkazib berish, ta'mirlash va h.k.)</p>
@@ -171,6 +173,7 @@
 
   <script src="/js/i18n.js"></script>
   <script src="/js/api.js"></script>
+  <script src="/js/datefmt.js"></script>
   <script src="/js/topbar.js"></script>
   <script src="/js/escpos-printer.js"></script>
   <script>
@@ -313,27 +316,52 @@
       return { expenses, banknotes, payment_types };
     }
 
-    function setFormLocked(locked) {
-      const submitBtn = document.getElementById('submit-btn');
+    function setFormLocked(locked, reason) {
       document.querySelectorAll(
         '#expense-body input, #add-expense-btn, .bn-count, .pt-amount, #submit-btn'
       ).forEach((el) => { el.disabled = locked; });
 
       let banner = document.getElementById('locked-banner');
+      if (banner) banner.remove();
       if (locked) {
-        if (!banner) {
-          banner = document.createElement('div');
-          banner.id = 'locked-banner';
-          banner.className = 'note';
-          banner.style.borderLeftColor = 'var(--danger)';
-          banner.style.color = 'var(--danger)';
-          banner.innerHTML = '<b style="color:var(--text); display:block;">Bu kun uchun ma\'lumot allaqachon yuborilgan</b>Faqat administrator tahrirlashi mumkin.';
-          document.querySelector('.filters').after(banner);
-        }
-      } else if (banner) {
-        banner.remove();
+        banner = document.createElement('div');
+        banner.id = 'locked-banner';
+        banner.className = 'note';
+        banner.style.borderLeftColor = 'var(--danger)';
+        banner.style.color = 'var(--danger)';
+        banner.innerHTML = reason === 'window'
+          ? '<b style="color:var(--text); display:block;">Bu sana faqat ko\'rish uchun</b>Kassa faqat oxirgi kunlar uchun kiritiladi. Eski kun uchun administratorga murojaat qiling.'
+          : '<b style="color:var(--text); display:block;">Bu kun uchun ma\'lumot allaqachon yuborilgan</b>Faqat administrator tahrirlashi mumkin.';
+        document.querySelector('.filters').after(banner);
       }
     }
+
+    // Oddiy xodim uchun ruxsat etilgan oraliqdan (oxirgi N kun, kelajak emas) tashqari sana: faqat o'qish rejimi
+    function isRestrictedDate(date) {
+      const u = getUser();
+      if (!date || (u && u.role === 'admin')) return false;
+      const el = document.getElementById('entry_date');
+      return !!((el.max && date > el.max) || (el.min && date < el.min));
+    }
+
+    // Chek faqat SAQLANGAN holatdagi forma uchun: sana, filial yoki summa o'zgarsa tugma yashirinadi
+    let printSnap = null;
+    let usbReady = false;
+    function formSnapshot() {
+      const { expenses, banknotes, payment_types } = collectFormData();
+      return JSON.stringify({
+        s: document.getElementById('spot_id').value, d: document.getElementById('entry_date').value,
+        e: expenses, b: banknotes, p: payment_types,
+      });
+    }
+    function refreshPrintButtons() {
+      let ok = false;
+      try { ok = !!printSnap && !isRestrictedDate(document.getElementById('entry_date').value) && formSnapshot() === printSnap; } catch (e) { ok = false; }
+      document.getElementById('print-btn').style.display = ok ? 'inline-block' : 'none';
+      document.getElementById('usb-print-btn').style.display = ok && usbReady ? 'inline-block' : 'none';
+    }
+    document.addEventListener('input', () => refreshPrintButtons());
+    document.addEventListener('change', () => refreshPrintButtons());
 
     async function loadEntry() {
       const spot_id = document.getElementById('spot_id').value;
@@ -342,6 +370,8 @@
 
       clearForm();
       setFormLocked(false);
+      printSnap = null;
+      refreshPrintButtons();
       try {
         const data = await apiFetch(`/cash/entry?date=${date}&spot_id=${spot_id}`);
         if (data.entry) {
@@ -361,15 +391,17 @@
             if (el) { el.value = Number(amount).toLocaleString('ru-RU'); }
           });
           recalc();
-          document.getElementById('print-btn').style.display = 'inline-block';
+          printSnap = formSnapshot();
 
           if (!data.entry.editable_by_current_user) {
             setFormLocked(true);
           }
         } else {
           currentEntryCreatedAt = null;
-          document.getElementById('print-btn').style.display = 'none';
+          printSnap = null;
         }
+        if (isRestrictedDate(date)) setFormLocked(true, 'window');
+        refreshPrintButtons();
         await loadCompare();
       } catch (e) {
         showToast('Yuklashda xato: ' + e.message, true);
@@ -465,11 +497,14 @@
           body: JSON.stringify({ date, spot_id: Number(spot_id), expenses, banknotes, payment_types }),
         });
         showToast(res.message || 'Saqlandi');
-        document.getElementById('print-btn').style.display = 'inline-block';
         currentEntryCreatedAt = new Date().toISOString();
+        printSnap = formSnapshot();
+        refreshPrintButtons();
+        showSavedCard();
         await loadCompare();
         await loadJournal();
         await loadDiffJournal();
+        loadMissing();
       } catch (e) {
         showToast('Xato: ' + e.message, true);
       }
@@ -501,7 +536,7 @@
 
       return {
         spotName: spotsById[spot_id] || '',
-        date, expenses, banknotes, paytypes,
+        date: fmtDMY(date), expenses, banknotes, paytypes,
         totalExpense, totalToza, total,
       };
     }
@@ -546,7 +581,8 @@
       try {
         await pairPrinter();
         showToast('Printer ulandi! Endi "USB orqali chop etish" tugmasidan foydalanishingiz mumkin.');
-        document.getElementById('usb-print-btn').style.display = 'inline-block';
+        usbReady = true;
+        refreshPrintButtons();
       } catch (e) {
         if (e.name === 'NotFoundError') {
           showToast('Printer tanlanmadi', true);
@@ -707,6 +743,54 @@
     document.getElementById('usb-print-btn').addEventListener('click', handleUsbPrint);
     document.getElementById('export-btn').addEventListener('click', exportExcel);
     document.getElementById('spot_id').addEventListener('change', () => { loadEntry(); loadJournal(); loadDiffJournal(); });
+    // Sana o'zgarganda forma o'zi yangilanadi (eski ma'lumot va chek qolib ketmasligi uchun)
+    document.getElementById('entry_date').addEventListener('change', () => { loadEntry(); });
+
+    // Saqlangandan keyin tasdiq oynasi: filial, sana va summa (xato bo'lsa kassir darrov ko'radi)
+    function showSavedCard() {
+      const d = gatherReceiptData();
+      const old = document.getElementById('saved-overlay');
+      if (old) old.remove();
+      const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
+      const ov = document.createElement('div');
+      ov.id = 'saved-overlay';
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+      ov.innerHTML = `
+        <div style="background:var(--card);color:var(--text);border:1px solid var(--border-strong);border-radius:14px;padding:22px 24px;max-width:380px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.5);">
+          <div style="font-size:18px;font-weight:700;margin-bottom:12px;">✅ Kassa saqlandi</div>
+          <div style="font-size:20px;font-weight:700;">${d.spotName}</div>
+          <div style="font-size:24px;font-weight:800;margin:2px 0 12px;">${d.date}</div>
+          <div style="display:flex;justify-content:space-between;margin:4px 0;"><span style="color:var(--text-dim);">Umumiy kassa</span><b>${fmt(d.total)} so'm</b></div>
+          <div style="display:flex;justify-content:space-between;margin:4px 0;"><span style="color:var(--text-dim);">Rasxod</span><b>${fmt(d.totalExpense)} so'm</b></div>
+          <div style="display:flex;justify-content:space-between;margin:4px 0;"><span style="color:var(--text-dim);">Тоза</span><b>${fmt(d.totalToza)} so'm</b></div>
+          <div style="color:var(--text-dim);font-size:13px;margin-top:12px;">Sana va filial to'g'ri ekanini tekshiring. Endi chek chiqarishingiz mumkin.</div>
+          <button class="btn-primary" id="saved-ok" style="margin-top:14px;">OK</button>
+        </div>`;
+      document.body.appendChild(ov);
+      document.getElementById('saved-ok').addEventListener('click', () => ov.remove());
+    }
+
+    // Kassa kiritilmagan kunlar haqida sariq eslatma
+    async function loadMissing() {
+      const box = document.getElementById('missing-box');
+      try {
+        const data = await apiFetch('/cash/missing');
+        if (!data.items || !data.items.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+        const chips = [];
+        data.items.forEach((it) => it.dates.forEach((dt) => {
+          chips.push(`<a href="#" class="missing-chip" data-spot="${it.spot_id}" data-date="${dt}" style="display:inline-block;margin:3px 6px 3px 0;padding:3px 10px;border:1px solid #e0a800;border-radius:14px;color:inherit;text-decoration:none;">${it.name} · ${fmtDMY(dt)}</a>`);
+        }));
+        box.innerHTML = `<b style="color:var(--text); display:block;">⚠️ Kassa kiritilmagan</b>Bosing — shu filial va sana ochiladi:<div style="margin-top:6px;">${chips.join('')}</div>`;
+        box.style.display = 'block';
+        box.querySelectorAll('.missing-chip').forEach((a) => a.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          document.getElementById('spot_id').value = a.dataset.spot;
+          document.getElementById('entry_date').value = a.dataset.date;
+          loadEntry(); loadJournal(); loadDiffJournal();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }));
+      } catch (e) { box.style.display = 'none'; }
+    }
 
     let selectedBdrSpots = [];
 
@@ -821,9 +905,7 @@
       } else {
         try {
           const existing = await navigator.usb.getDevices();
-          if (existing.length > 0) {
-            document.getElementById('usb-print-btn').style.display = 'inline-block';
-          }
+          if (existing.length > 0) usbReady = true;
         } catch (e) {
           // e'tiborsiz qoldiramiz
         }
@@ -832,6 +914,7 @@
       await loadSpots();
       recalc();
       await loadEntry();
+      loadMissing();
       await loadJournal();
       await loadDiffJournal();
 

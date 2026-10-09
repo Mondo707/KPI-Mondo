@@ -78,6 +78,7 @@
 
   <script src="/js/i18n.js"></script>
   <script src="/js/api.js"></script>
+  <script src="/js/datefmt.js"></script>
   <script src="/js/topbar.js"></script>
   <script>
     requireSection('savdo');
@@ -102,9 +103,8 @@
     }
 
     function fmtShortDate(dateStr) {
-      const [y, m, d] = dateStr.split('-');
-      const months = ['yan','fev','mar','apr','may','iyun','iyul','avg','sen','okt','noy','dek'];
-      return `${Number(d)}-${months[Number(m) - 1]}`;
+      const [, m, d] = dateStr.split('-');
+      return `${d}.${m}`;
     }
 
     function renderChart(entries, average) {

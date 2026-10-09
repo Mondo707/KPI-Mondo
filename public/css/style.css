@@ -769,6 +769,8 @@ tr:hover td { background: var(--card-hover); }
   margin-bottom: 14px;
 }
 .print-preview .doc-header div { margin-bottom: 4px; }
+.print-preview .doc-header { font-size: 17px; font-weight: 700; }
+.print-preview .doc-header div:last-child { font-size: 21px; }
 
 .print-preview .doc-table {
   width: 100%;
@@ -1042,3 +1044,11 @@ td.indent { padding-left: 26px; color: var(--text-dim); }
 .admin-tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 700; }
 .admin-tab .tab-count { font-size: 11px; background: var(--card-hover); border: 1px solid var(--border); border-radius: 9px; padding: 0 6px; margin-left: 6px; color: var(--text-dim); font-weight: 500; }
 @media (max-width: 600px) { .admin-title { font-size: 20px; } .admin-tab { padding: 9px 12px; font-size: 13px; } }
+
+/* Sana maydoni (datefmt.js): KK.OO.YYYY + kalendar tugmasi */
+.dp-wrap { display: inline-flex; align-items: stretch; position: relative; max-width: 100%; }
+.dp-wrap .dp-text { width: 130px; min-width: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.dp-wrap .dp-btn { border: 1px solid var(--border, #2a3350); border-left: 0; background: var(--card, transparent); color: inherit; padding: 0 10px; cursor: pointer; border-radius: 0 8px 8px 0; font-size: 15px; }
+.dp-wrap .dp-btn:disabled { opacity: .5; cursor: not-allowed; }
+.dp-wrap .dp-native { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+.dp-wrap .dp-text.dp-bad { border-color: var(--danger, #e5484d); }

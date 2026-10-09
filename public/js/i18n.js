@@ -578,7 +578,15 @@
 "PDF va rasm": "PDF и изображение",
 "Savdo summalari": "Суммы продаж",
 "Savdo summalarini yashirish (faqat Farq va Holat chiqadi; umumiy guruhlar uchun)": "Скрыть суммы продаж (только Разница и Статус; для общих групп)",
-"PDF + rasm": "PDF + изображение"
+"PDF + rasm": "PDF + изображение",
+"Kassa kiritilmagan eslatmasi (matn)": "Напоминание: касса не внесена (текст)",
+"Matn": "Текст",
+"Bu sana faqat ko'rish uchun": "Эта дата только для просмотра",
+"Kassa faqat oxirgi kunlar uchun kiritiladi. Eski kun uchun administratorga murojaat qiling.": "Кассу можно вносить только за последние дни. За старую дату обратитесь к администратору.",
+"✅ Kassa saqlandi": "✅ Касса сохранена",
+"Sana va filial to'g'ri ekanini tekshiring. Endi chek chiqarishingiz mumkin.": "Проверьте, что дата и филиал верны. Теперь можно распечатать чек.",
+"⚠️ Kassa kiritilmagan": "⚠️ Касса не внесена",
+"Bosing — shu filial va sana ochiladi:": "Нажмите — откроется этот филиал и дата:"
 };
   var RULES = [
     [/(\d)\s*so'm\b/g, '$1 сум'],

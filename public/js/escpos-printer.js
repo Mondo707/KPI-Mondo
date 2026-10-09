@@ -272,8 +272,9 @@ function renderReceiptCanvas(data) {
   }
 
   // --- Sarlavha ---
-  line(`Торговая Точка: ${data.spotName}`, 20, true);
-  line(`Дата: ${data.date}`, 18, true);
+  // Filial va sana KATTA va qalin: qog'ozdan xatoni darrov ko'rish uchun
+  line(`Торговая Точка: ${data.spotName}`, 26, true);
+  line(`Дата: ${data.date}`, 30, true);
   y += 6;
 
   // --- Rasxod jadvali (agar mavjud bo'lsa) ---

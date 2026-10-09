@@ -282,7 +282,7 @@
         <input type="hidden" id="ar-id">
         <div class="form-row">
           <div class="field" style="flex:2;"><label for="ar-name">Nomi</label><input type="text" id="ar-name" maxlength="80" placeholder="Masalan: Ertalabki kassa farqi"></div>
-          <div class="field"><label for="ar-key">Hisobot</label><select id="ar-key"><option value="k">Kassa farqi (Fakt va Poster)</option><option value="p">KPI / Bonus holati</option><option value="s">Kunlik savdo (kategoriya bo'yicha)</option></select></div>
+          <div class="field"><label for="ar-key">Hisobot</label><select id="ar-key"><option value="k">Kassa farqi (Fakt va Poster)</option><option value="p">KPI / Bonus holati</option><option value="s">Kunlik savdo (kategoriya bo'yicha)</option><option value="m">Kassa kiritilmagan eslatmasi (matn)</option></select></div>
           <div class="field" style="max-width:130px;"><label for="ar-time">Vaqt</label><input type="time" id="ar-time" value="08:00"></div>
           <div class="field"><label for="ar-period">Davr</label><select id="ar-period"><option value="yesterday">Kecha</option><option value="last7">Oxirgi 7 kun</option><option value="month">Shu oy (bugungacha)</option></select></div>
           <div class="field" style="max-width:150px;"><label for="ar-lang">Guruh tili</label><select id="ar-lang"><option value="uz">O'zbekcha</option><option value="ru">Русский</option></select></div>
@@ -294,7 +294,7 @@
         </div>
         <div class="field" id="ar-cats-wrap" style="display:none; margin-bottom:10px;"><label>Kategoriyalar (hech biri belgilanmasa = hammasi)</label><div id="ar-cats" class="spot-checks"></div></div>
         <div class="form-row">
-          <div class="field" style="max-width:220px;"><label for="ar-format">Format</label><select id="ar-format"><option value="pdf">PDF</option><option value="image">Rasm</option><option value="both">PDF va rasm</option></select></div>
+          <div class="field" id="ar-format-wrap" style="max-width:220px;"><label for="ar-format">Format</label><select id="ar-format"><option value="pdf">PDF</option><option value="image">Rasm</option><option value="both">PDF va rasm</option></select></div>
           <div class="field" id="ar-hide-wrap" style="flex:1;"><label>Savdo summalari</label><label class="spot-check-item"><input type="checkbox" id="ar-hide"> Savdo summalarini yashirish (faqat Farq va Holat chiqadi; umumiy guruhlar uchun)</label></div>
         </div>
         <label class="spot-check-item" style="margin:6px 0 12px;"><input type="checkbox" id="ar-enabled" checked> Yoqilgan (har kuni avtomatik yuboriladi)</label>
@@ -377,6 +377,7 @@
 
   <script src="/js/i18n.js"></script>
   <script src="/js/api.js"></script>
+  <script src="/js/datefmt.js"></script>
   <script src="/js/topbar.js"></script>
   <script src="/js/categoryOrder.js"></script>
   <script>
@@ -1585,7 +1586,7 @@
           <td>${arEsc(r.name)}</td>
           <td>${arEsc(r.send_time)}</td>
           <td>${arEsc(AR_PERIOD[r.period] || r.period)}</td>
-          <td>${r.output_format === 'image' ? 'Rasm' : r.output_format === 'both' ? 'PDF + rasm' : 'PDF'}${r.hide_amounts ? ' · savdosiz' : ''}</td>
+          <td>${r.report_key === 'm' ? 'Matn' : r.output_format === 'image' ? 'Rasm' : r.output_format === 'both' ? 'PDF + rasm' : 'PDF'}${r.hide_amounts ? ' · savdosiz' : ''}</td>
           <td>Foydalanuvchilar: ${r.user_ids.length} · Guruhlar: ${r.group_ids.length}</td>
           <td>${r.last_sent_date ? arEsc(r.last_sent_date) : '<span style="color:var(--text-dim);">Hali yo\'q</span>'}</td>
           <td>${r.enabled ? '<span class="badge ok">Yoqilgan</span>' : '<span class="badge bad">O\'chiq</span>'}</td>
@@ -1634,6 +1635,7 @@
     function syncArHide() {
       const isK = document.getElementById('ar-key').value === 'k';
       document.getElementById('ar-hide-wrap').style.display = isK ? 'block' : 'none';
+      document.getElementById('ar-format-wrap').style.display = document.getElementById('ar-key').value === 'm' ? 'none' : 'block';
       if (!isK) document.getElementById('ar-hide').checked = false;
     }
     document.getElementById('ar-key').addEventListener('change', () => { renderArCats([]); syncArHide(); });
