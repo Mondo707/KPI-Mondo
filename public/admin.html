@@ -1683,6 +1683,9 @@
         output_format: document.getElementById('ar-format').value,
         hide_amounts: document.getElementById('ar-key').value === 'k' && document.getElementById('ar-hide').checked,
       };
+      const saveBtn = document.getElementById('ar-save-btn');
+      if (saveBtn.disabled) return; // ikki marta bosilsa ikkita hisobot yaratilmasin
+      saveBtn.disabled = true;
       try {
         await apiFetch(id ? `/admin/auto-reports/${id}` : '/admin/auto-reports', { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
         showToast('Avto-hisobot saqlandi');
@@ -1690,6 +1693,8 @@
         await loadAutoReports();
       } catch (e) {
         showToast('Xato: ' + e.message, true);
+      } finally {
+        saveBtn.disabled = false;
       }
     });
 
@@ -1711,7 +1716,17 @@
           await apiFetch(`/admin/bot-groups/${id}`, { method: 'DELETE' });
           await loadAutoReports();
         } else if (act === 'test' || act === 'send') {
-          if (act === 'send' && !confirm('Hisobot hozir barcha oluvchilarga (foydalanuvchilar va guruhlarga) yuboriladi. Davom etasizmi?')) return;
+          if (act === 'send') {
+            const rep = arState.reports.find((r) => String(r.id) === String(id));
+            const names = rep ? rep.user_ids.map((uid) => { const u = arState.users.find((x) => x.id === uid); return u ? u.login : '#' + uid; }) : [];
+            const gnames = rep ? rep.group_ids.map((gid) => { const g = arState.groups.find((x) => x.chat_id === gid); return g ? (g.title || gid) : '#' + gid; }) : [];
+            const fmtName = rep && rep.report_key === 'm' ? 'Matn' : rep && rep.output_format === 'image' ? 'Rasm' : rep && rep.output_format === 'both' ? 'PDF + rasm' : 'PDF';
+            const msg = 'Hisobot hozir yuboriladi:\n'
+              + `• Foydalanuvchilar (${names.length}): ${names.join(', ') || '—'}\n`
+              + `• Guruhlar (${gnames.length}): ${gnames.join(', ') || '—'}\n`
+              + `• Format: ${fmtName}\n\nDavom etasizmi?`;
+            if (!confirm(msg)) return;
+          }
           btn.disabled = true;
           showToast('Yuborilmoqda...');
           const r = await apiFetch(`/admin/auto-reports/${id}/send`, { method: 'POST', body: JSON.stringify({ only_me: act === 'test' }) });
