@@ -572,7 +572,13 @@
 "Foydalanuvchilar": "Пользователи",
 "Telegram bot": "Telegram-бот",
 "Bonus va tarif": "Бонус и тариф",
-"Poster sozlamalari": "Настройки Poster"
+"Poster sozlamalari": "Настройки Poster",
+"Format": "Формат",
+"Rasm": "Изображение",
+"PDF va rasm": "PDF и изображение",
+"Savdo summalari": "Суммы продаж",
+"Savdo summalarini yashirish (faqat Farq va Holat chiqadi; umumiy guruhlar uchun)": "Скрыть суммы продаж (только Разница и Статус; для общих групп)",
+"PDF + rasm": "PDF + изображение"
 };
   var RULES = [
     [/(\d)\s*so'm\b/g, '$1 сум'],

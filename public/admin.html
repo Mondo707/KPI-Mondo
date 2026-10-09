@@ -293,6 +293,10 @@
           <div class="field" style="flex:1;"><label>Guruhlar</label><div id="ar-groups" class="spot-checks"></div></div>
         </div>
         <div class="field" id="ar-cats-wrap" style="display:none; margin-bottom:10px;"><label>Kategoriyalar (hech biri belgilanmasa = hammasi)</label><div id="ar-cats" class="spot-checks"></div></div>
+        <div class="form-row">
+          <div class="field" style="max-width:220px;"><label for="ar-format">Format</label><select id="ar-format"><option value="pdf">PDF</option><option value="image">Rasm</option><option value="both">PDF va rasm</option></select></div>
+          <div class="field" id="ar-hide-wrap" style="flex:1;"><label>Savdo summalari</label><label class="spot-check-item"><input type="checkbox" id="ar-hide"> Savdo summalarini yashirish (faqat Farq va Holat chiqadi; umumiy guruhlar uchun)</label></div>
+        </div>
         <label class="spot-check-item" style="margin:6px 0 12px;"><input type="checkbox" id="ar-enabled" checked> Yoqilgan (har kuni avtomatik yuboriladi)</label>
         <div style="display:flex; gap:10px;">
           <button class="btn-primary" id="ar-save-btn" style="width:auto; padding:8px 18px;">Saqlash</button>
@@ -301,7 +305,7 @@
       </div>
 
       <table>
-        <thead><tr><th>Nomi</th><th>Vaqt</th><th>Davr</th><th>Oluvchilar</th><th>Oxirgi yuborilgan</th><th>Holat</th><th>Amallar</th></tr></thead>
+        <thead><tr><th>Nomi</th><th>Vaqt</th><th>Davr</th><th>Format</th><th>Oluvchilar</th><th>Oxirgi yuborilgan</th><th>Holat</th><th>Amallar</th></tr></thead>
         <tbody id="ar-body"></tbody>
       </table>
       <div class="empty-state" id="ar-empty" style="display:none;">Hali avto-hisobot yo'q</div>
@@ -1581,6 +1585,7 @@
           <td>${arEsc(r.name)}</td>
           <td>${arEsc(r.send_time)}</td>
           <td>${arEsc(AR_PERIOD[r.period] || r.period)}</td>
+          <td>${r.output_format === 'image' ? 'Rasm' : r.output_format === 'both' ? 'PDF + rasm' : 'PDF'}${r.hide_amounts ? ' · savdosiz' : ''}</td>
           <td>Foydalanuvchilar: ${r.user_ids.length} · Guruhlar: ${r.group_ids.length}</td>
           <td>${r.last_sent_date ? arEsc(r.last_sent_date) : '<span style="color:var(--text-dim);">Hali yo\'q</span>'}</td>
           <td>${r.enabled ? '<span class="badge ok">Yoqilgan</span>' : '<span class="badge bad">O\'chiq</span>'}</td>
@@ -1626,10 +1631,15 @@
       document.getElementById('ar-cats').innerHTML = window.__arCatNames.map((c) => `
         <label class="spot-check-item"><input type="checkbox" class="ar-cat" value="${arEsc(c)}" ${selected.includes(c) ? 'checked' : ''}> ${arEsc(c)}</label>`).join('');
     }
-    document.getElementById('ar-key').addEventListener('change', () => renderArCats([]));
+    function syncArHide() {
+      const isK = document.getElementById('ar-key').value === 'k';
+      document.getElementById('ar-hide-wrap').style.display = isK ? 'block' : 'none';
+      if (!isK) document.getElementById('ar-hide').checked = false;
+    }
+    document.getElementById('ar-key').addEventListener('change', () => { renderArCats([]); syncArHide(); });
 
     function openArForm(rep) {
-      const r = rep || { id: '', name: '', report_key: 'k', send_time: '08:00', period: 'yesterday', lang: 'uz', spot_ids: [], user_ids: [], group_ids: [], category_names: [], enabled: true };
+      const r = rep || { id: '', name: '', report_key: 'k', send_time: '08:00', period: 'yesterday', lang: 'uz', spot_ids: [], user_ids: [], group_ids: [], category_names: [], enabled: true, hide_amounts: false, output_format: 'pdf' };
       document.getElementById('ar-id').value = r.id;
       document.getElementById('ar-name').value = r.name;
       document.getElementById('ar-key').value = r.report_key;
@@ -1637,6 +1647,9 @@
       document.getElementById('ar-period').value = r.period;
       document.getElementById('ar-lang').value = r.lang;
       document.getElementById('ar-enabled').checked = r.enabled;
+      document.getElementById('ar-format').value = r.output_format || 'pdf';
+      document.getElementById('ar-hide').checked = !!r.hide_amounts;
+      syncArHide();
       document.getElementById('ar-spots').innerHTML = spotsList.map((s) => `
         <label class="spot-check-item"><input type="checkbox" class="ar-spot" value="${s.spot_id}" ${r.spot_ids.includes(Number(s.spot_id)) ? 'checked' : ''}> ${arEsc(s.name)}</label>`).join('');
       document.getElementById('ar-users').innerHTML = arState.users.length ? arState.users.map((u) => `
@@ -1665,6 +1678,8 @@
         spot_ids: pick('.ar-spot'), user_ids: pick('.ar-user'), group_ids: pick('.ar-group'),
         category_names: document.getElementById('ar-key').value === 's' ? Array.from(document.querySelectorAll('.ar-cat:checked')).map((c) => c.value) : [],
         enabled: document.getElementById('ar-enabled').checked,
+        output_format: document.getElementById('ar-format').value,
+        hide_amounts: document.getElementById('ar-key').value === 'k' && document.getElementById('ar-hide').checked,
       };
       try {
         await apiFetch(id ? `/admin/auto-reports/${id}` : '/admin/auto-reports', { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) });
