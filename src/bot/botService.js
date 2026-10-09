@@ -7,6 +7,7 @@ const { presetRange, parseDates, fmtDate } = require('./dates');
 const kassaFarqi = require('./reports/kassaFarqi');
 const kpiBonus = require('./reports/kpiBonus');
 const kunlikSavdo = require('./reports/kunlikSavdo');
+const kassaEslatma = require('./reports/kassaEslatma');
 const { getCurrentBusinessDate } = require('../services/businessDay');
 
 const DEFAULT_SECTIONS = ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 'login_history', 'portsiya'];
@@ -15,6 +16,7 @@ const DEFAULT_SECTIONS = ['kpi', 'daily_sales', 'bonus_table', 'cash', 'savdo', 
 const REPORTS = {
   k: { section: 'cash', btn: 'btn_report_kassa', title: 'btn_report_kassa', build: kassaFarqi.build },
   p: { section: 'kpi', btn: 'btn_report_kpi', title: 'btn_report_kpi', build: kpiBonus.build },
+  m: { section: 'cash', auto_only: true, build: kassaEslatma.build }, // faqat avto-hisobotda (matnli eslatma)
   s: { section: 'daily_sales', btn: 'btn_report_sales', title: 'btn_report_sales', build: kunlikSavdo.build, cats: true },
 };
 
@@ -70,7 +72,7 @@ async function edit(chatId, messageId, text, markup, parseMode = 'Markdown') {
 function menuScreen(user) {
   const rows = [];
   for (const key of Object.keys(REPORTS)) {
-    if (canSee(user, key)) rows.push([{ text: t(user.lang, REPORTS[key].btn), callback_data: `r:${key}` }]);
+    if (!REPORTS[key].auto_only && canSee(user, key)) rows.push([{ text: t(user.lang, REPORTS[key].btn), callback_data: `r:${key}` }]);
   }
   rows.push([{ text: t(user.lang, 'btn_lang'), callback_data: 'l' }]);
   return {
@@ -280,7 +282,7 @@ async function onCallback(cb) {
 
   if (data.startsWith('r:')) {
     const key = data.slice(2);
-    if (!canSee(user, key)) { await answer(t(L, 'no_access')); return; }
+    if (!canSee(user, key) || REPORTS[key].auto_only) { await answer(t(L, 'no_access')); return; }
     setState(from.id, { report: key, from: null, to: null, spots: new Set(), catsSel: null, awaiting: null });
     await answer();
     const s = periodScreen(user, key);

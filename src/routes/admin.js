@@ -621,7 +621,7 @@ const botTg = require('../bot/telegramApi');
 function validateAutoReport(b) {
   const name = String(b.name || '').trim();
   if (!name || name.length > 80) return { error: 'Nom kerak (80 belgigacha)' };
-  if (!['k', 'p', 's'].includes(b.report_key)) return { error: 'Hisobot turi noto\'g\'ri' };
+  if (!['k', 'p', 's', 'm'].includes(b.report_key)) return { error: 'Hisobot turi noto\'g\'ri' };
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.send_time || ''))) return { error: 'Vaqt HH:MM ko\'rinishida bo\'lishi kerak' };
   if (!autoReports.PERIODS.includes(b.period)) return { error: 'Davr noto\'g\'ri' };
   if (!['uz', 'ru'].includes(b.lang)) return { error: 'Til noto\'g\'ri' };

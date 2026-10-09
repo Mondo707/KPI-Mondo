@@ -8,6 +8,7 @@ const { getCurrentBusinessDate } = require('../services/businessDay');
 const { getComparison, getBranchDiffReport } = require('../services/cashReconcile');
 const { getShiftStatus } = require('../services/posterShiftStatus');
 const poster = require('../services/posterClient');
+const { getMissingCash } = require('../services/missingCash');
 
 const router = express.Router();
 
@@ -104,6 +105,24 @@ router.post('/entry', authRequired, requireSection('cash'), async (req, res) => 
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/cash/missing - kassa kiritilmagan kunlar (oxirgi STAFF_MAX_DAYS_BACK kun, bugungi ish kunidan oldin).
+// Saytdagi sariq eslatma uchun. Foydalanuvchi faqat o'z filiallari bo'yicha ko'radi.
+router.get('/missing', authRequired, requireSection('cash'), async (req, res) => {
+  try {
+    const today = getCurrentBusinessDate();
+    const [y, m, d] = today.split('-').map(Number);
+    const iso = (n) => new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    const list = await getMissingCash({
+      user: { role: req.user.role, allowed_spots: req.user.allowed_spots || [] },
+      from: iso(-STAFF_MAX_DAYS_BACK), to: iso(-1),
+    });
+    res.json({ today, items: list });
+  } catch (e) {
+    console.error('[cash] missing xato:', e.message);
+    res.json({ today: null, items: [] });
   }
 });
 

@@ -78,6 +78,7 @@ async function runReport(rep, opts = {}) {
   }
   // Tanlangan formatga qarab PDF va/yoki rasm(lar) yuboradi
   async function deliver(chatId, key, out) {
+    if (out.text) { await tg.call('sendMessage', { chat_id: chatId, text: out.text }); return; }
     const fmt = rep.output_format || 'pdf';
     if (fmt === 'pdf' || fmt === 'both') await tg.sendDocument(chatId, out.pdf, out.filename, out.caption);
     if (fmt === 'image' || fmt === 'both') {
@@ -107,6 +108,7 @@ async function runReport(rep, opts = {}) {
       const spotIds = rep.spot_ids.length ? allowed.filter((id) => rep.spot_ids.includes(id)) : allowed;
       if (!spotIds.length) { summary.skipped++; await writeLog(rep, 'user', label, 'o\'tkazildi', 'Ruxsat etilgan filial yo\'q', manual); continue; }
       const { key, out } = await buildFor(user, spotIds, user.lang);
+      if (out.skip) { summary.skipped++; await writeLog(rep, 'user', label, 'o\'tkazildi', 'Hamma filial kassa kiritgan — yuborilmadi', manual); continue; }
       await deliver(row.telegram_id, key, out);
       summary.ok++;
       await writeLog(rep, 'user', label, 'yuborildi', null, manual);
@@ -128,6 +130,7 @@ async function runReport(rep, opts = {}) {
         let spotIds = rep.spot_ids;
         if (!spotIds.length) spotIds = (await getSpots()).map((s) => Number(s.spot_id));
         const { key, out } = await buildFor(pseudo, spotIds, rep.lang);
+        if (out.skip) { summary.skipped++; await writeLog(rep, 'group', label, 'o\'tkazildi', 'Hamma filial kassa kiritgan — yuborilmadi', manual); continue; }
         await deliver(g.chat_id, key, out);
         summary.ok++;
         await writeLog(rep, 'group', label, 'yuborildi', null, manual);
